@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id          String    @id @default(cuid())
+  name        String
+  email       String    @unique
+  phone       String?
+  city        String?
+  tags        String[]  @default([])
+  totalSpent  Float     @default(0)
+  orderCount  Int       @default(0)
+  lastOrderAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  orders             Order[]
+  campaignRecipients CampaignRecipient[]
+}
+
+model Order {
+  id         String   @id @default(cuid())
+  customerId String
+  amount     Float
+  status     String   @default("completed")
+  items      Json     @default("[]")
+  channel    String   @default("online")
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model Segment {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  filterRules Json
+  aiGenerated Boolean  @default(false)
+  prompt      String?
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaigns Campaign[]
+}
+
+model Campaign {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  segmentId   String?
+  channel     String         @default("EMAIL")
+  messageBody String
+  subject     String?
+  status      CampaignStatus @default(DRAFT)
+  aiGenerated Boolean        @default(false)
+  prompt      String?
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  segment    Segment?            @relation(fields: [segmentId], references: [id])
+  recipients CampaignRecipient[]
+}
+
+model CampaignRecipient {
+  id            String    @id @default(cuid())
+  campaignId    String
+  customerId    String
+  messageBody   String
+  status        String    @default("QUEUED")
+  externalId    String?   @unique
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  failedAt      DateTime?
+  failureReason String?
+  convertedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  events   DeliveryEvent[]
+}
+
+model DeliveryEvent {
+  id          String   @id @default(cuid())
+  recipientId String
+  event       String
+  metadata    Json?
+  timestamp   DateTime @default(now())
+
+  recipient CampaignRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+}
+
+model AICommand {
+  id        String   @id @default(cuid())
+  prompt    String
+  response  String
+  actions   Json
+  createdAt DateTime @default(now())
+}
+
+enum CampaignStatus {
+  DRAFT
+  SENDING
+  SENT
+  PAUSED
+  FAILED
+}
