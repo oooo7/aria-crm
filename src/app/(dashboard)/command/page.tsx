@@ -17,6 +17,13 @@ interface AIResult {
   estimatedAudience: string;
 }
 
+interface SegmentContext {
+  id: string;
+  name: string;
+  description: string | null;
+  audienceCount: number;
+}
+
 const PROMPTS = [
   { text: "Send a win-back offer to customers who haven't ordered in 90 days", tag: "Win-back" },
   { text: "Create a VIP exclusive campaign for our top spenders", tag: "VIP" },
@@ -38,10 +45,26 @@ export default function CommandPage() {
   const [result, setResult] = useState<AIResult | null>(null);
   const [launching, setLaunching] = useState(false);
   const [launched, setLaunched] = useState<{ campaignId: string } | null>(null);
+  const [segmentContext, setSegmentContext] = useState<SegmentContext | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (textareaRef.current) textareaRef.current.focus();
+
+    const prefill = sessionStorage.getItem("aria_prefill");
+    if (prefill) {
+      setPrompt(prefill);
+      sessionStorage.removeItem("aria_prefill");
+    }
+
+    const segment = sessionStorage.getItem("aria_segment_context");
+    if (segment) {
+      try {
+        setSegmentContext(JSON.parse(segment) as SegmentContext);
+      } catch {
+        sessionStorage.removeItem("aria_segment_context");
+      }
+    }
   }, []);
 
   async function handleSubmit() {
@@ -69,18 +92,23 @@ export default function CommandPage() {
     if (!result) return;
     setLaunching(true);
     try {
-      const segRes = await fetch("/api/segments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: result.segmentName,
-          description: result.segmentDescription,
-          filterRules: result.filterRules,
-          aiGenerated: true,
-          prompt,
-        }),
-      });
-      const segment = await segRes.json();
+      let segmentId = segmentContext?.id;
+
+      if (!segmentId) {
+        const segRes = await fetch("/api/segments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: result.segmentName,
+            description: result.segmentDescription,
+            filterRules: result.filterRules,
+            aiGenerated: true,
+            prompt,
+          }),
+        });
+        const segment = await segRes.json();
+        segmentId = segment.id;
+      }
 
       const campRes = await fetch("/api/campaigns", {
         method: "POST",
@@ -88,7 +116,7 @@ export default function CommandPage() {
         body: JSON.stringify({
           name: result.campaignName,
           description: result.intent,
-          segmentId: segment.id,
+          segmentId,
           channel: result.channel,
           messageBody: result.messageBody,
           subject: result.subject,
@@ -100,6 +128,7 @@ export default function CommandPage() {
 
       await fetch(`/api/campaigns/${campaign.id}/send`, { method: "POST" });
       setLaunched({ campaignId: campaign.id });
+      sessionStorage.removeItem("aria_segment_context");
       toast.success("Campaign launched! Delivery tracking is live.");
     } catch {
       toast.error("Launch failed — please try again");
@@ -126,6 +155,24 @@ export default function CommandPage() {
         <p style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", marginTop: 10 }}>
           Describe your marketing goal in plain English. ARIA builds the audience, writes the copy, and launches the campaign.
         </p>
+        {segmentContext && (
+          <div style={{ marginTop: 16, background: "rgba(167,139,250,0.09)", border: "1px solid rgba(167,139,250,0.22)", borderRadius: 10, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: 1 }}>Selected audience</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", marginTop: 3 }}>{segmentContext.name}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.38)", marginTop: 2 }}>{segmentContext.description || "Existing segment"} · {segmentContext.audienceCount.toLocaleString()} matched shoppers</div>
+            </div>
+            <button
+              onClick={() => {
+                setSegmentContext(null);
+                sessionStorage.removeItem("aria_segment_context");
+              }}
+              style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.5)", borderRadius: 8, padding: "7px 10px", fontSize: 12, cursor: "pointer" }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Input */}
