@@ -1,7 +1,13 @@
 "use client";
 import { useEffect, useState, use } from "react";
-import { ArrowLeft, Loader2, TrendingUp, Mail, MousePointer, CheckCircle, XCircle, ShoppingBag } from "lucide-react";
+import { ArrowLeft, Loader2, TrendingUp, Mail, MousePointer, CheckCircle, XCircle, ShoppingBag, Clock } from "lucide-react";
 import Link from "next/link";
+
+interface Campaign {
+  id: string; name: string; status: string; channel: string;
+  sentAt: string | null; segment: { name: string } | null;
+  _count: { recipients: number };
+}
 
 interface Analytics {
   total: number; delivered: number; opened: number;
@@ -9,12 +15,23 @@ interface Analytics {
   rates: { deliveryRate: string; openRate: string; clickRate: string; conversionRate: string };
 }
 
+const CH_COLOR: Record<string, string> = {
+  EMAIL: "#a78bfa", SMS: "#38bdf8", WHATSAPP: "#34d399", RCS: "#fb923c"
+};
+
 export default function CampaignDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Load campaign details
+    fetch("/api/campaigns").then(r => r.json()).then((campaigns: Campaign[]) => {
+      const found = campaigns.find(c => c.id === id);
+      if (found) setCampaign(found);
+    });
+
     const load = () => fetch(`/api/campaigns/${id}/analytics`).then(r => r.json()).then(setAnalytics);
     load().finally(() => setLoading(false));
     const interval = setInterval(load, 3000);
@@ -22,99 +39,126 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
   }, [id]);
 
   const stats = analytics ? [
-    { label: "Delivered", value: analytics.delivered, rate: analytics.rates.deliveryRate + "%", icon: CheckCircle, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
-    { label: "Opened", value: analytics.opened, rate: analytics.rates.openRate + "%", icon: Mail, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
-    { label: "Clicked", value: analytics.clicked, rate: analytics.rates.clickRate + "%", icon: MousePointer, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
-    { label: "Converted", value: analytics.converted, rate: analytics.rates.conversionRate + "%", icon: ShoppingBag, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" },
-    { label: "Failed", value: analytics.failed, rate: analytics.total > 0 ? ((analytics.failed / analytics.total) * 100).toFixed(1) + "%" : "0%", icon: XCircle, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20" },
+    { label: "Delivered", value: analytics.delivered, rate: analytics.rates.deliveryRate + "%", icon: CheckCircle, color: "#34d399", bg: "rgba(52,211,153,0.1)", border: "rgba(52,211,153,0.2)" },
+    { label: "Opened", value: analytics.opened, rate: analytics.rates.openRate + "%", icon: Mail, color: "#a78bfa", bg: "rgba(167,139,250,0.1)", border: "rgba(167,139,250,0.2)" },
+    { label: "Clicked", value: analytics.clicked, rate: analytics.rates.clickRate + "%", icon: MousePointer, color: "#38bdf8", bg: "rgba(56,189,248,0.1)", border: "rgba(56,189,248,0.2)" },
+    { label: "Converted", value: analytics.converted, rate: analytics.rates.conversionRate + "%", icon: ShoppingBag, color: "#fb923c", bg: "rgba(251,146,60,0.1)", border: "rgba(251,146,60,0.2)" },
+    { label: "Failed", value: analytics.failed, rate: analytics.total > 0 ? ((analytics.failed / analytics.total) * 100).toFixed(1) + "%" : "0%", icon: XCircle, color: "#f87171", bg: "rgba(248,113,113,0.1)", border: "rgba(248,113,113,0.2)" },
   ] : [];
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <Link href="/campaigns" className="flex items-center gap-2 text-white/40 hover:text-white/70 text-sm mb-4 transition-colors">
-          <ArrowLeft className="w-4 h-4" /> Back to Campaigns
+    <div style={{ padding: "40px", maxWidth: 1100 }}>
+      {/* Header */}
+      <div style={{ marginBottom: 32 }}>
+        <Link href="/campaigns" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "rgba(255,255,255,0.35)", textDecoration: "none", fontSize: 13, marginBottom: 20 }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.7)"}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.35)"}>
+          <ArrowLeft size={14} /> Back to Campaigns
         </Link>
-        <div className="flex items-center justify-between">
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h1 className="text-2xl font-bold text-white">Campaign Analytics</h1>
-            <p className="text-white/40 text-sm mt-1">Live stats · updates every 3 seconds</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+              <h1 style={{ fontSize: 24, fontWeight: 700, color: "#fff" }}>
+                {campaign?.name || "Campaign Analytics"}
+              </h1>
+              {campaign?.channel && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: "rgba(167,139,250,0.15)", color: CH_COLOR[campaign.channel], border: "1px solid rgba(167,139,250,0.2)" }}>
+                  {campaign.channel}
+                </span>
+              )}
+            </div>
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 13 }}>
+              {campaign?.segment?.name || "All customers"} · {campaign?._count.recipients || 0} recipients
+            </p>
           </div>
-          <div className="flex items-center gap-2 text-emerald-400 text-xs bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full">
-            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-            Live
+          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 20, padding: "6px 14px" }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", animation: "pulse 2s infinite" }} />
+            <span style={{ fontSize: 12, color: "#34d399", fontWeight: 500 }}>Live · updates every 3s</span>
           </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-6 h-6 text-violet-400 animate-spin" />
+        <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}>
+          <Loader2 size={24} color="#a78bfa" style={{ animation: "spin 1s linear infinite" }} />
         </div>
       ) : analytics ? (
         <>
-          <div className="bg-[#0d0d14] border border-white/5 rounded-2xl p-5 mb-6">
-            <div className="flex items-center justify-between">
+          {/* Progress Overview */}
+          <div style={{ background: "#0f0f1a", border: "1px solid #1e1e30", borderRadius: 16, padding: 24, marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
               <div>
-                <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Total Recipients</p>
-                <p className="text-4xl font-bold text-white">{analytics.total.toLocaleString()}</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>Total Recipients</p>
+                <p style={{ fontSize: 40, fontWeight: 700, color: "#fff", lineHeight: 1 }}>{analytics.total.toLocaleString()}</p>
               </div>
-              <div className="text-right">
-                <p className="text-white/40 text-xs uppercase tracking-wider mb-1">In Queue</p>
-                <p className="text-2xl font-bold text-white/40">{analytics.queued}</p>
+              <div style={{ display: "flex", gap: 24 }}>
+                {[
+                  { label: "Queued", value: analytics.queued, color: "rgba(255,255,255,0.3)" },
+                  { label: "Processing", value: analytics.total - analytics.queued - analytics.failed, color: "#38bdf8" },
+                  { label: "Failed", value: analytics.failed, color: "#f87171" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ textAlign: "right" }}>
+                    <p style={{ fontSize: 20, fontWeight: 700, color }}>{value}</p>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>{label}</p>
+                  </div>
+                ))}
               </div>
             </div>
-            {/* Progress bar */}
-            <div className="mt-4 h-2 bg-white/5 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full transition-all duration-1000"
-                style={{ width: analytics.total > 0 ? `${((analytics.total - analytics.queued) / analytics.total) * 100}%` : "0%" }}
-              />
+            <div style={{ height: 8, background: "rgba(255,255,255,0.05)", borderRadius: 8, overflow: "hidden" }}>
+              <div style={{
+                height: "100%",
+                width: analytics.total > 0 ? `${((analytics.total - analytics.queued) / analytics.total) * 100}%` : "0%",
+                background: "linear-gradient(90deg, #8b5cf6, #06b6d4)",
+                borderRadius: 8, transition: "width 1s ease"
+              }} />
             </div>
-            <p className="text-white/20 text-xs mt-2">
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 8 }}>
               {analytics.total > 0 ? Math.round(((analytics.total - analytics.queued) / analytics.total) * 100) : 0}% processed
             </p>
           </div>
 
-          <div className="grid grid-cols-5 gap-4">
+          {/* Stat Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 12, marginBottom: 20 }}>
             {stats.map(({ label, value, rate, icon: Icon, color, bg, border }) => (
-              <div key={label} className={`bg-[#0d0d14] border ${border} rounded-2xl p-5`}>
-                <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center mb-4`}>
-                  <Icon className={`w-4 h-4 ${color}`} />
+              <div key={label} style={{ background: "#0f0f1a", border: `1px solid ${border}`, borderRadius: 16, padding: 20 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: bg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                  <Icon size={16} color={color} />
                 </div>
-                <p className={`text-2xl font-bold ${color}`}>{value.toLocaleString()}</p>
-                <p className="text-white/40 text-xs mt-1">{label}</p>
-                <p className="text-white/20 text-xs mt-2 font-mono">{rate}</p>
+                <p style={{ fontSize: 28, fontWeight: 700, color, lineHeight: 1 }}>{value.toLocaleString()}</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4 }}>{label}</p>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginTop: 6, fontFamily: "monospace" }}>{rate} rate</p>
               </div>
             ))}
           </div>
 
           {/* Funnel */}
-          <div className="mt-6 bg-[#0d0d14] border border-white/5 rounded-2xl p-6">
-            <h3 className="text-white/60 text-xs uppercase tracking-wider mb-5 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Engagement Funnel
+          <div style={{ background: "#0f0f1a", border: "1px solid #1e1e30", borderRadius: 16, padding: 24 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
+              <TrendingUp size={14} /> Engagement Funnel
             </h3>
-            <div className="space-y-3">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                { label: "Sent", value: analytics.total, color: "from-white/20 to-white/10" },
-                { label: "Delivered", value: analytics.delivered, color: "from-emerald-500 to-emerald-600" },
-                { label: "Opened", value: analytics.opened, color: "from-violet-500 to-violet-600" },
-                { label: "Clicked", value: analytics.clicked, color: "from-cyan-500 to-cyan-600" },
-                { label: "Converted", value: analytics.converted, color: "from-orange-500 to-orange-600" },
-              ].map(({ label, value, color }) => {
+                { label: "Sent", value: analytics.total, color: "rgba(255,255,255,0.2)", text: "#fff" },
+                { label: "Delivered", value: analytics.delivered, color: "linear-gradient(90deg,#34d399,#059669)", text: "#34d399" },
+                { label: "Opened", value: analytics.opened, color: "linear-gradient(90deg,#a78bfa,#7c3aed)", text: "#a78bfa" },
+                { label: "Clicked", value: analytics.clicked, color: "linear-gradient(90deg,#38bdf8,#0891b2)", text: "#38bdf8" },
+                { label: "Converted", value: analytics.converted, color: "linear-gradient(90deg,#fb923c,#ea580c)", text: "#fb923c" },
+              ].map(({ label, value, color, text }) => {
                 const pct = analytics.total > 0 ? (value / analytics.total) * 100 : 0;
                 return (
-                  <div key={label} className="flex items-center gap-4">
-                    <p className="text-white/40 text-xs w-20 text-right">{label}</p>
-                    <div className="flex-1 h-7 bg-white/5 rounded-lg overflow-hidden">
-                      <div
-                        className={`h-full bg-gradient-to-r ${color} rounded-lg transition-all duration-1000 flex items-center px-3`}
-                        style={{ width: `${Math.max(pct, pct > 0 ? 3 : 0)}%` }}
-                      >
-                        <span className="text-white text-xs font-medium">{value.toLocaleString()}</span>
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", width: 72, textAlign: "right", flexShrink: 0 }}>{label}</p>
+                    <div style={{ flex: 1, height: 32, background: "rgba(255,255,255,0.04)", borderRadius: 8, overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%", width: `${Math.max(pct > 0 ? pct : 0, pct > 0 ? 2 : 0)}%`,
+                        background: color, borderRadius: 8, transition: "width 1s ease",
+                        display: "flex", alignItems: "center", paddingLeft: 12
+                      }}>
+                        {value > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{value.toLocaleString()}</span>}
                       </div>
                     </div>
-                    <p className="text-white/30 text-xs w-12 font-mono">{pct.toFixed(1)}%</p>
+                    <p style={{ fontSize: 12, color: text, width: 44, textAlign: "right", fontFamily: "monospace", flexShrink: 0 }}>{pct.toFixed(1)}%</p>
                   </div>
                 );
               })}
@@ -122,7 +166,10 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
           </div>
         </>
       ) : (
-        <div className="text-center py-20 text-white/30">No data yet</div>
+        <div style={{ textAlign: "center", padding: "60px 0", color: "rgba(255,255,255,0.2)" }}>
+          <Clock size={40} style={{ margin: "0 auto 16px" }} />
+          <p>No data yet — campaign may still be processing</p>
+        </div>
       )}
     </div>
   );

@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
-import { Sparkles, Send, Loader2, CheckCircle, Users, MessageSquare, Zap, ChevronRight } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Sparkles, Send, Loader2, CheckCircle, Users, MessageSquare, Zap, ChevronRight, ArrowRight } from "lucide-react";
 import { toast } from "@/components/ui/toast";
+import Link from "next/link";
 
 interface AIResult {
   intent: string;
@@ -16,19 +17,19 @@ interface AIResult {
   estimatedAudience: string;
 }
 
-const SUGGESTIONS = [
-  "Send a win-back offer to customers who haven't ordered in 90 days",
-  "Create a VIP exclusive campaign for our top spenders",
-  "Welcome new customers who joined this month with a first order discount",
-  "Re-engage customers in Mumbai who haven't opened our last campaign",
-  "Launch a flash sale campaign for customers who clicked but didn't buy",
+const PROMPTS = [
+  { text: "Send a win-back offer to customers who haven't ordered in 90 days", tag: "Win-back" },
+  { text: "Create a VIP exclusive campaign for our top spenders", tag: "VIP" },
+  { text: "Welcome new customers who joined this month with a first order discount", tag: "Onboarding" },
+  { text: "Re-engage at-risk customers in Mumbai before they churn", tag: "Retention" },
+  { text: "Launch a flash sale for customers who clicked but didn't buy", tag: "Conversion" },
 ];
 
-const channelColors: Record<string, string> = {
-  EMAIL: "bg-violet-500/20 text-violet-300 border-violet-500/30",
-  SMS: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
-  WHATSAPP: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-  RCS: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+const CH_STYLE: Record<string, { color: string; bg: string }> = {
+  EMAIL:    { color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
+  SMS:      { color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
+  WHATSAPP: { color: "#34d399", bg: "rgba(52,211,153,0.12)" },
+  RCS:      { color: "#fb923c", bg: "rgba(251,146,60,0.12)" },
 };
 
 export default function CommandPage() {
@@ -36,13 +37,18 @@ export default function CommandPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AIResult | null>(null);
   const [launching, setLaunching] = useState(false);
-  const [launched, setLaunched] = useState(false);
+  const [launched, setLaunched] = useState<{ campaignId: string } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) textareaRef.current.focus();
+  }, []);
 
   async function handleSubmit() {
     if (!prompt.trim() || loading) return;
     setLoading(true);
     setResult(null);
-    setLaunched(false);
+    setLaunched(null);
     try {
       const res = await fetch("/api/ai/command", {
         method: "POST",
@@ -63,7 +69,6 @@ export default function CommandPage() {
     if (!result) return;
     setLaunching(true);
     try {
-      // 1. Create segment
       const segRes = await fetch("/api/segments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,7 +82,6 @@ export default function CommandPage() {
       });
       const segment = await segRes.json();
 
-      // 2. Create campaign
       const campRes = await fetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,167 +98,170 @@ export default function CommandPage() {
       });
       const campaign = await campRes.json();
 
-      // 3. Send campaign
       await fetch(`/api/campaigns/${campaign.id}/send`, { method: "POST" });
-
-      setLaunched(true);
-      toast.success("Campaign launched! ARIA is sending messages now.");
+      setLaunched({ campaignId: campaign.id });
+      toast.success("Campaign launched! Delivery tracking is live.");
     } catch {
-      toast.error("Launch failed");
+      toast.error("Launch failed — please try again");
     } finally {
       setLaunching(false);
     }
   }
 
+  const ch = result ? (CH_STYLE[result.channel] || CH_STYLE.EMAIL) : null;
+
   return (
-    <div className="min-h-screen p-8">
+    <div style={{ padding: "36px 40px 60px", maxWidth: 760, margin: "0 auto" }}>
       {/* Header */}
-      <div className="mb-10">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: "linear-gradient(135deg, #7c3aed, #0891b2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Sparkles size={18} color="white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">AI Command</h1>
-            <p className="text-white/40 text-sm">Tell ARIA what you want to achieve</p>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", margin: 0 }}>AI Command</h1>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", margin: 0 }}>Powered by Gemini 2.5 Flash</p>
           </div>
+        </div>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", marginTop: 10 }}>
+          Describe your marketing goal in plain English. ARIA builds the audience, writes the copy, and launches the campaign.
+        </p>
+      </div>
+
+      {/* Input */}
+      <div style={{ background: "#0d0d1a", border: `1px solid ${loading ? "rgba(124,58,237,0.5)" : "#1e1e32"}`, borderRadius: 14, overflow: "hidden", transition: "border-color 0.2s" }}>
+        <div style={{ display: "flex", gap: 12, padding: "16px 18px 0" }}>
+          <div style={{ paddingTop: 3, flexShrink: 0 }}>
+            <Sparkles size={16} color="#a78bfa" />
+          </div>
+          <textarea
+            ref={textareaRef}
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); }}}
+            placeholder={"Describe your campaign goal in plain English...\ne.g. Send a win-back offer to customers who haven't ordered in 90 days"}
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#fff", fontSize: 14, lineHeight: 1.6, resize: "none", minHeight: 72, fontFamily: "-apple-system, sans-serif", caretColor: "#a78bfa" }}
+            rows={3}
+          />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px 14px", borderTop: "1px solid #16162a", marginTop: 12 }}>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,0.18)" }}>Enter to run · Shift+Enter for new line</span>
+          <button
+            onClick={handleSubmit}
+            disabled={!prompt.trim() || loading}
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, background: prompt.trim() && !loading ? "linear-gradient(135deg, #7c3aed, #0891b2)" : "rgba(255,255,255,0.06)", color: prompt.trim() && !loading ? "#fff" : "rgba(255,255,255,0.25)", border: "none", cursor: prompt.trim() && !loading ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 600, padding: "8px 18px", borderRadius: 8, transition: "all 0.15s" }}
+          >
+            {loading ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={14} />}
+            {loading ? "Thinking..." : "Run ARIA"}
+          </button>
         </div>
       </div>
 
-      {/* Command Input */}
-      <div className="max-w-3xl mx-auto">
-        <div className="relative bg-[#0d0d14] border border-white/10 rounded-2xl overflow-hidden focus-within:border-violet-500/50 transition-all duration-300 shadow-2xl">
-          <div className="flex items-start gap-3 p-5">
-            <Sparkles className="w-5 h-5 text-violet-400 mt-0.5 flex-shrink-0" />
-            <textarea
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); }}}
-              placeholder="Describe your campaign goal in plain English...&#10;e.g. Send a win-back offer to customers who haven't ordered in 90 days"
-              className="flex-1 bg-transparent text-white placeholder-white/25 text-base resize-none outline-none min-h-[80px] leading-relaxed"
-              rows={3}
-            />
-          </div>
-          <div className="flex items-center justify-between px-5 py-3 border-t border-white/5">
-            <p className="text-white/20 text-xs">Press Enter to run · Shift+Enter for new line</p>
-            <button
-              onClick={handleSubmit}
-              disabled={!prompt.trim() || loading}
-              className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed text-white text-sm px-5 py-2 rounded-xl font-medium transition-all duration-200"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {loading ? "Thinking..." : "Run ARIA"}
-            </button>
+      {/* Suggestions */}
+      {!result && !loading && (
+        <div style={{ marginTop: 24 }}>
+          <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.22)", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 10 }}>Try these</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {PROMPTS.map(({ text, tag }) => (
+              <button key={text} onClick={() => setPrompt(text)}
+                style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", padding: "11px 14px", borderRadius: 10, background: "#0d0d1a", border: "1px solid #1a1a2e", cursor: "pointer", transition: "all 0.12s" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(124,58,237,0.3)"; (e.currentTarget as HTMLElement).style.background = "rgba(124,58,237,0.06)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#1a1a2e"; (e.currentTarget as HTMLElement).style.background = "#0d0d1a"; }}
+              >
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#a78bfa", background: "rgba(124,58,237,0.15)", padding: "2px 7px", borderRadius: 4, letterSpacing: 0.4, whiteSpace: "nowrap", flexShrink: 0 }}>{tag}</span>
+                <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", flex: 1 }}>{text}</span>
+                <ChevronRight size={13} color="rgba(255,255,255,0.2)" style={{ flexShrink: 0 }} />
+              </button>
+            ))}
           </div>
         </div>
+      )}
 
-        {/* Suggestions */}
-        {!result && !loading && (
-          <div className="mt-6">
-            <p className="text-white/30 text-xs uppercase tracking-widest mb-3">Try these</p>
-            <div className="space-y-2">
-              {SUGGESTIONS.map(s => (
-                <button
-                  key={s}
-                  onClick={() => setPrompt(s)}
-                  className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl bg-[#0d0d14] border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all duration-200 group"
-                >
-                  <ChevronRight className="w-3 h-3 text-white/20 group-hover:text-violet-400 transition-colors flex-shrink-0" />
-                  <span className="text-white/50 group-hover:text-white/80 text-sm transition-colors">{s}</span>
-                </button>
-              ))}
+      {/* Loading */}
+      {loading && (
+        <div style={{ marginTop: 40, textAlign: "center", padding: "32px 0" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(124,58,237,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <Sparkles size={26} color="#a78bfa" />
+          </div>
+          <p style={{ fontSize: 15, fontWeight: 500, color: "rgba(255,255,255,0.6)", margin: 0 }}>ARIA is thinking...</p>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginTop: 6 }}>Analysing audience · crafting message · choosing channel</p>
+        </div>
+      )}
+
+      {/* Result */}
+      {result && !loading && (
+        <div style={{ marginTop: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+            <CheckCircle size={16} color="#34d399" />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#34d399" }}>ARIA has a plan</span>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", marginLeft: 4 }}>{result.intent}</span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div style={{ background: "#0d0d1a", border: "1px solid #1e1e32", borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+                <Users size={13} color="#a78bfa" />
+                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1.2 }}>Audience</span>
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "#fff", margin: "0 0 4px" }}>{result.segmentName}</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.38)", margin: "0 0 12px", lineHeight: 1.5 }}>{result.segmentDescription}</p>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)", borderRadius: 6, padding: "4px 10px" }}>
+                <Users size={11} color="#a78bfa" />
+                <span style={{ fontSize: 12, color: "#c4b5fd", fontWeight: 500 }}>≈ {result.estimatedAudience}</span>
+              </div>
+            </div>
+
+            <div style={{ background: "#0d0d1a", border: "1px solid #1e1e32", borderRadius: 12, padding: "18px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+                <Zap size={13} color="#38bdf8" />
+                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1.2 }}>Channel</span>
+              </div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: ch?.bg, borderRadius: 8, padding: "5px 14px", marginBottom: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: ch?.color }}>{result.channel}</span>
+              </div>
+              {result.subject && <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", margin: "0 0 8px" }}>Subject: <span style={{ color: "rgba(255,255,255,0.6)" }}>{result.subject}</span></p>}
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", margin: 0, lineHeight: 1.5, fontStyle: "italic" }}>{result.reasoning}</p>
             </div>
           </div>
-        )}
 
-        {/* Loading State */}
-        {loading && (
-          <div className="mt-8 flex flex-col items-center gap-4 py-12">
-            <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20 flex items-center justify-center">
-                <Sparkles className="w-8 h-8 text-violet-400 animate-pulse" />
-              </div>
+          <div style={{ background: "#0d0d1a", border: "1px solid #1e1e32", borderRadius: 12, padding: "18px 20px", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+              <MessageSquare size={13} color="#34d399" />
+              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1.2 }}>Message Preview</span>
             </div>
-            <div className="text-center">
-              <p className="text-white/60 font-medium">ARIA is thinking...</p>
-              <p className="text-white/25 text-sm mt-1">Analyzing your audience and crafting the message</p>
-            </div>
-          </div>
-        )}
-
-        {/* Result */}
-        {result && !loading && (
-          <div className="mt-8 space-y-4">
-            <div className="flex items-center gap-2 mb-6">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-              <p className="text-emerald-400 font-medium">ARIA has a plan</p>
-            </div>
-
-            {/* Campaign Plan Cards */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Audience */}
-              <div className="bg-[#0d0d14] border border-white/5 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="w-4 h-4 text-violet-400" />
-                  <p className="text-white/60 text-xs uppercase tracking-wider">Audience</p>
-                </div>
-                <p className="text-white font-semibold">{result.segmentName}</p>
-                <p className="text-white/40 text-sm mt-1">{result.segmentDescription}</p>
-                <p className="text-violet-400 text-xs mt-3 font-medium">≈ {result.estimatedAudience}</p>
-              </div>
-
-              {/* Channel */}
-              <div className="bg-[#0d0d14] border border-white/5 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Zap className="w-4 h-4 text-cyan-400" />
-                  <p className="text-white/60 text-xs uppercase tracking-wider">Channel</p>
-                </div>
-                <span className={`inline-flex items-center px-3 py-1 rounded-lg border text-sm font-semibold ${channelColors[result.channel] || "bg-white/10 text-white/60"}`}>
-                  {result.channel}
-                </span>
-                {result.subject && (
-                  <p className="text-white/40 text-xs mt-3">Subject: {result.subject}</p>
-                )}
-                <p className="text-white/30 text-xs mt-2 italic">{result.reasoning}</p>
-              </div>
-            </div>
-
-            {/* Message Preview */}
-            <div className="bg-[#0d0d14] border border-white/5 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <MessageSquare className="w-4 h-4 text-emerald-400" />
-                <p className="text-white/60 text-xs uppercase tracking-wider">Message Preview</p>
-              </div>
-              {result.subject && (
-                <p className="text-white/50 text-xs mb-2 font-medium">Subject: <span className="text-white/70">{result.subject}</span></p>
-              )}
-              <div className="bg-white/3 rounded-xl p-4 border border-white/5">
-                <p className="text-white/80 text-sm leading-relaxed whitespace-pre-wrap">{result.messageBody}</p>
-              </div>
-            </div>
-
-            {/* Launch Button */}
-            {!launched ? (
-              <button
-                onClick={handleLaunch}
-                disabled={launching}
-                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 disabled:opacity-50 text-white font-semibold py-4 rounded-2xl transition-all duration-200 shadow-lg shadow-violet-500/20 text-base"
-              >
-                {launching ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Launching Campaign...</>
-                ) : (
-                  <><Zap className="w-5 h-5" /> Launch This Campaign</>
-                )}
-              </button>
-            ) : (
-              <div className="w-full flex items-center justify-center gap-3 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-semibold py-4 rounded-2xl">
-                <CheckCircle className="w-5 h-5" />
-                Campaign Launched! Check Campaigns for live stats.
+            {result.subject && (
+              <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #1a1a2e" }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Subject: </span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>{result.subject}</span>
               </div>
             )}
+            <div style={{ background: "rgba(255,255,255,0.025)", borderRadius: 8, padding: "14px 16px" }}>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", margin: 0, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{result.messageBody}</p>
+            </div>
           </div>
-        )}
-      </div>
+
+          {!launched ? (
+            <button onClick={handleLaunch} disabled={launching}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: launching ? "rgba(124,58,237,0.3)" : "linear-gradient(135deg, #7c3aed, #0891b2)", color: "#fff", border: "none", cursor: launching ? "wait" : "pointer", fontSize: 15, fontWeight: 700, padding: "15px 24px", borderRadius: 12, transition: "opacity 0.15s", boxShadow: "0 4px 20px rgba(124,58,237,0.28)" }}
+            >
+              {launching ? <><Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> Launching Campaign...</> : <><Zap size={18} /> Launch This Campaign</>}
+            </button>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 12, padding: "14px 24px", color: "#34d399", fontSize: 14, fontWeight: 600 }}>
+                <CheckCircle size={18} /> Campaign Launched! Delivery tracking is live.
+              </div>
+              <Link href={`/campaigns/${launched.campaignId}`}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "#a78bfa", fontSize: 13, textDecoration: "none", padding: "10px", borderRadius: 10, background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.18)" }}
+              >
+                View live analytics <ArrowRight size={13} />
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
