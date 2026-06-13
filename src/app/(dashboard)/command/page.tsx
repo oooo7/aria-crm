@@ -89,7 +89,23 @@ export default function CommandPage() {
   const [segmentContext, setSegmentContext] = useState<SegmentContext | null>(null);
   const [editingMessage, setEditingMessage] = useState(false);
   const [editedMessage, setEditedMessage] = useState("");
+  const [duplicateCampaign, setDuplicateCampaign] = useState<any | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setDuplicateCampaign(null);
+      }
+    }
+    if (duplicateCampaign) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [duplicateCampaign]);
+
 
   useEffect(() => {
     if (textareaRef.current) textareaRef.current.focus();
@@ -131,9 +147,48 @@ export default function CommandPage() {
         const seg = await segRes.json();
         segmentId = seg.id;
       }
+
+      // Check for duplicate campaign (same name AND same segmentId)
+      const campaignsRes = await fetch("/api/campaigns");
+      const campaignsList = await campaignsRes.json();
+      const duplicate = campaignsList.find(
+        (c: any) => c.name === result.campaignName && c.segmentId === segmentId
+      );
+
+      if (duplicate) {
+        setDuplicateCampaign({ ...duplicate, segmentName: result.segmentName || duplicate.segment?.name });
+        setLaunching(false);
+        return;
+      }
+
       const campRes = await fetch("/api/campaigns", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: result.campaignName, description: result.intent, segmentId, channel: result.channel, messageBody: finalMessage, subject: result.subject, aiGenerated: true, prompt }),
+      });
+      const campaign = await campRes.json();
+      await fetch(`/api/campaigns/${campaign.id}/send`, { method: "POST" });
+      setLaunched({ campaignId: campaign.id });
+      sessionStorage.removeItem("aria_segment_context");
+      toast.success("Campaign launched! Delivery tracking is live.");
+    } catch { toast.error("Launch failed — please try again"); }
+    finally { setLaunching(false); }
+  }
+
+  async function handleLaunchAnyway() {
+    if (!result || !duplicateCampaign) return;
+    const target = duplicateCampaign;
+    setDuplicateCampaign(null);
+    setLaunching(true);
+
+    const finalMessage = editingMessage ? editedMessage : result.messageBody;
+    const dateStr = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const finalCampaignName = `${result.campaignName} — Re-send ${dateStr}`;
+
+    try {
+      let segmentId = target.segmentId;
+      const campRes = await fetch("/api/campaigns", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: finalCampaignName, description: result.intent, segmentId, channel: result.channel, messageBody: finalMessage, subject: result.subject, aiGenerated: true, prompt }),
       });
       const campaign = await campRes.json();
       await fetch(`/api/campaigns/${campaign.id}/send`, { method: "POST" });
@@ -237,7 +292,7 @@ export default function CommandPage() {
       {/* Result */}
       <AnimatePresence>
         {result && !loading && (
-          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ marginTop: 26 }}>
+          <motion.div key="command-result" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ marginTop: 26 }}>
             {/* Status bar */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -360,6 +415,126 @@ export default function CommandPage() {
             )}
           </motion.div>
         )}
+      {/* Duplicate Campaign Warning Modal */}
+      {duplicateCampaign && (
+        <div
+          key="duplicate-warning-backdrop"
+          onClick={() => setDuplicateCampaign(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#0f0f1a",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 24,
+              padding: 24,
+              width: "90%",
+              maxWidth: 420,
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: "rgba(245, 158, 11, 0.1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+                color: "#f59e0b",
+                fontSize: 20,
+              }}
+            >
+              ⚠️
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: "0 0 8px" }}>
+              This campaign already exists
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255, 255, 255, 0.5)", margin: "0 0 20px", lineHeight: 1.5 }}>
+              A campaign called <strong style={{ color: "#fff" }}>&ldquo;{duplicateCampaign.name}&rdquo;</strong> was already sent to <strong style={{ color: "#fff" }}>&ldquo;{duplicateCampaign.segmentName}&rdquo;</strong> on {new Date(duplicateCampaign.sentAt || duplicateCampaign.createdAt).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' })}. Sending it again would reach the same audience with the same message.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", alignItems: "center" }}>
+              <button
+                onClick={handleLaunchAnyway}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "1px solid #7c3aed",
+                  color: "#c4b5fd",
+                  padding: "12px",
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(124, 58, 237, 0.08)"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                Launch anyway — I want to re-engage this audience
+              </button>
+              <button
+                onClick={() => {
+                  setDuplicateCampaign(null);
+                  setEditingMessage(true);
+                }}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  color: "#fff",
+                  padding: "12px",
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                Edit before launching
+              </button>
+              <button
+                onClick={() => setDuplicateCampaign(null)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "rgba(255, 255, 255, 0.4)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  marginTop: 6,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = "rgba(255, 255, 255, 0.6)"}
+                onMouseLeave={(e) => e.currentTarget.style.color = "rgba(255, 255, 255, 0.4)"}
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       </AnimatePresence>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

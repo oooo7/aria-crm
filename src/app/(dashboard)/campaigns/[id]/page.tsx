@@ -2,9 +2,11 @@
 import { useEffect, useState, use } from "react";
 import {
   ArrowLeft, Loader2, TrendingUp, Mail, MousePointer,
-  CheckCircle, XCircle, ShoppingBag, Clock, Zap, Users
+  CheckCircle, XCircle, ShoppingBag, Clock, Zap, Users, Trash2
 } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { toast } from "@/components/ui/toast";
 
 interface Analytics {
   total: number; delivered: number; opened: number;
@@ -64,6 +66,36 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setShowDeleteModal(false);
+      }
+    }
+    if (showDeleteModal) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showDeleteModal]);
+
+  async function confirmDelete() {
+    setShowDeleteModal(false);
+    toast.delete("Campaign deleted");
+    window.location.href = "/campaigns";
+
+    try {
+      const res = await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      const data = await res.json();
+      if (!data.success) throw new Error("Delete failed");
+    } catch (err) {
+      toast.error("Failed to delete. Please try again.");
+    }
+  }
 
   useEffect(() => {
     fetch("/api/campaigns")
@@ -140,14 +172,46 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
           </p>
         </div>
 
-        {/* Live badge */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 7,
-          background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)",
-          borderRadius: 20, padding: "6px 14px",
-        }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", animation: "livePulse 2s ease-in-out infinite" }} />
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#34d399" }}>Live · updates every 3s</span>
+        {/* Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Live badge */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 7,
+            background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)",
+            borderRadius: 20, padding: "6px 14px",
+          }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", animation: "livePulse 2s ease-in-out infinite" }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#34d399" }}>Live · updates every 3s</span>
+          </div>
+
+          {/* Delete campaign button */}
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: "transparent",
+              border: "1px solid rgba(239, 68, 68, 0.4)",
+              color: "#f87171",
+              fontSize: 11,
+              fontWeight: 700,
+              padding: "6px 14px",
+              borderRadius: 20,
+              cursor: "pointer",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)";
+              e.currentTarget.style.borderColor = "#f87171";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.4)";
+            }}
+          >
+            <Trash2 size={12} /> Delete campaign
+          </button>
         </div>
       </div>
 
@@ -382,6 +446,103 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         </>
+      )}
+      {/* Confirmation Modal */}
+      {showDeleteModal && campaign && (
+        <div
+          onClick={() => setShowDeleteModal(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#0f0f1a",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 24,
+              padding: 24,
+              width: "90%",
+              maxWidth: 400,
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: "rgba(239, 68, 68, 0.1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+                color: "#ef4444",
+              }}
+            >
+              <Trash2 size={22} />
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: "0 0 8px" }}>
+              Delete this campaign?
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255, 255, 255, 0.5)", margin: "0 0 24px", lineHeight: 1.5 }}>
+              This will permanently remove <strong style={{ color: "#fff" }}>&ldquo;{campaign.name}&rdquo;</strong> and all its delivery data. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, width: "100%" }}>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  color: "rgba(255, 255, 255, 0.8)",
+                  borderRadius: 12,
+                  padding: "12px 16px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                style={{
+                  flex: 1,
+                  background: "#ef4444",
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 12,
+                  padding: "12px 16px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#dc2626"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#ef4444"}
+              >
+                Yes, delete
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
 
       <style>{`

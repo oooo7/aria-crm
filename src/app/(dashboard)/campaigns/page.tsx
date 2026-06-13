@@ -1,11 +1,119 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   Megaphone, Plus, ArrowRight, Loader2, Sparkles,
   CheckCircle, Clock, Send, XCircle, Users, Filter, Brain,
+  MoreVertical, Trash2,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "@/components/ui/toast";
+
+function CampaignRowMenu({ campaign, onDelete }: { campaign: Campaign; onDelete: (c: Campaign) => void }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [open]);
+
+  return (
+    <div ref={menuRef} style={{ position: "relative" }}>
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "rgba(255, 255, 255, 0.4)",
+          cursor: "pointer",
+          padding: 8,
+          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "all 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "#fff";
+          e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "rgba(255, 255, 255, 0.4)";
+          e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <MoreVertical size={16} />
+      </button>
+
+      {open && (
+        <div
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "100%",
+            marginTop: 4,
+            background: "#0f0f1a",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: 10,
+            padding: 4,
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5)",
+            zIndex: 50,
+            minWidth: 145,
+          }}
+        >
+          <button
+            onClick={() => {
+              setOpen(false);
+              onDelete(campaign);
+            }}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "transparent",
+              border: "none",
+              color: "#f87171",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "8px 12px",
+              borderRadius: 6,
+              cursor: "pointer",
+              textAlign: "left",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(248, 113, 113, 0.08)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
+          >
+            <Trash2 size={13} /> Delete campaign
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Campaign {
   id: string; name: string; status: string; channel: string;
@@ -42,10 +150,49 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading]     = useState(true);
   const [statusFilter, setStatus] = useState<StatusFilter>("all");
+  const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
 
   useEffect(() => {
     fetch("/api/campaigns").then(r => r.json()).then(d => { setCampaigns(d); setLoading(false); });
   }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setCampaignToDelete(null);
+      }
+    }
+    if (campaignToDelete) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [campaignToDelete]);
+
+  async function confirmDelete() {
+    if (!campaignToDelete) return;
+    const target = campaignToDelete;
+    setCampaignToDelete(null);
+
+    // Optimistic delete
+    setCampaigns(prev => prev.filter(c => c.id !== target.id));
+    toast.delete("Campaign deleted");
+
+    try {
+      const res = await fetch(`/api/campaigns/${target.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      const data = await res.json();
+      if (!data.success) throw new Error("Delete failed");
+    } catch (err) {
+      toast.error("Failed to delete. Please try again.");
+      // Revert optimistic delete
+      setCampaigns(prev => {
+        if (prev.some(c => c.id === target.id)) return prev;
+        return [...prev, target].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      });
+    }
+  }
 
   const filtered = campaigns.filter(c => statusFilter === "all" || c.status === statusFilter);
   const aiCount  = campaigns.filter(c => c.aiGenerated).length;
@@ -125,8 +272,8 @@ export default function CampaignsPage() {
             const st  = STATUS[c.status] || STATUS.DRAFT;
             const StIcon = st.icon;
             return (
-              <motion.div key={c.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                <Link href={`/campaigns/${c.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, background: "rgba(10,10,22,0.9)", border: "1px solid rgba(255,255,255,0.065)", borderRadius: 14, padding: "14px 18px", textDecoration: "none", transition: "all 0.12s" }}
+              <motion.div key={c.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} style={{ position: "relative" }}>
+                <Link href={`/campaigns/${c.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, background: "rgba(10,10,22,0.9)", border: "1px solid rgba(255,255,255,0.065)", borderRadius: 14, padding: "14px 54px 14px 18px", textDecoration: "none", transition: "all 0.12s" }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(124,58,237,0.25)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(10,10,22,0.9)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.065)"; }}
                 >
@@ -168,13 +315,116 @@ export default function CampaignsPage() {
                     ) : st.label}
                   </div>
 
-                  <ArrowRight size={14} color="rgba(255,255,255,0.18)" style={{ flexShrink: 0 }} />
+                  <ArrowRight size={14} color="rgba(255,255,255,0.18)" style={{ flexShrink: 0, marginRight: -18 }} />
                 </Link>
+
+                <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", zIndex: 10 }}>
+                  <CampaignRowMenu campaign={c} onDelete={setCampaignToDelete} />
+                </div>
               </motion.div>
             );
           })}
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      {campaignToDelete && (
+        <div
+          onClick={() => setCampaignToDelete(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#0f0f1a",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 24,
+              padding: 24,
+              width: "90%",
+              maxWidth: 400,
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "50%",
+                background: "rgba(239, 68, 68, 0.1)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+                color: "#ef4444",
+              }}
+            >
+              <Trash2 size={22} />
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: "0 0 8px" }}>
+              Delete this campaign?
+            </h3>
+            <p style={{ fontSize: 13, color: "rgba(255, 255, 255, 0.5)", margin: "0 0 24px", lineHeight: 1.5 }}>
+              This will permanently remove <strong style={{ color: "#fff" }}>&ldquo;{campaignToDelete.name}&rdquo;</strong> and all its delivery data. This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: 10, width: "100%" }}>
+              <button
+                onClick={() => setCampaignToDelete(null)}
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  color: "rgba(255, 255, 255, 0.8)",
+                  borderRadius: 12,
+                  padding: "12px 16px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                style={{
+                  flex: 1,
+                  background: "#ef4444",
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 12,
+                  padding: "12px 16px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#dc2626"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#ef4444"}
+              >
+                Yes, delete
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.75)} }`}</style>
     </div>
   );
