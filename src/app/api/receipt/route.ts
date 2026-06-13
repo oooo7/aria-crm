@@ -11,6 +11,14 @@ export async function POST(req: NextRequest) {
   const eventTime = timestamp ? new Date(timestamp) : new Date();
 
   try {
+    // Idempotency guard: don't process the same event twice for the same recipient
+    const existing = await prisma.deliveryEvent.findFirst({
+      where: { recipientId, event },
+    });
+    if (existing) {
+      return NextResponse.json({ ok: true, duplicate: true });
+    }
+
     await prisma.deliveryEvent.create({
       data: { recipientId, event, metadata: metadata ?? {}, timestamp: eventTime },
     });
@@ -19,11 +27,11 @@ export async function POST(req: NextRequest) {
 
     switch (event) {
       case "DELIVERED": updateData.deliveredAt = eventTime; break;
-      case "OPENED":    updateData.openedAt = eventTime; break;
-      case "CLICKED":   updateData.clickedAt = eventTime; break;
+      case "OPENED":    updateData.openedAt    = eventTime; break;
+      case "CLICKED":   updateData.clickedAt   = eventTime; break;
       case "CONVERTED": updateData.convertedAt = eventTime; break;
       case "FAILED":
-        updateData.failedAt = eventTime;
+        updateData.failedAt      = eventTime;
         updateData.failureReason = (metadata as { reason?: string })?.reason;
         break;
     }

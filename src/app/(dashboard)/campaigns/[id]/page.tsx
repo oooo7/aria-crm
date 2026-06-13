@@ -9,6 +9,8 @@ import Link from "next/link";
 interface Analytics {
   total: number; delivered: number; opened: number;
   clicked: number; converted: number; failed: number; queued: number;
+  insight: string; bottleneck: string; nextBestAction: string;
+  recentEvents: Array<{ id: string; event: string; timestamp: string; customerName: string; customerCity: string | null }>;
   rates: { deliveryRate: string; openRate: string; clickRate: string; conversionRate: string };
 }
 
@@ -215,6 +217,34 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
             </div>
           </div>
 
+          {/* ARIA readout */}
+          <div style={{
+            background: "rgba(124,58,237,0.07)",
+            border: "1px solid rgba(124,58,237,0.18)",
+            borderRadius: 14,
+            padding: "18px 22px",
+            marginBottom: 16,
+            display: "grid",
+            gridTemplateColumns: "1.5fr 0.8fr 1fr",
+            gap: 18,
+          }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                <Zap size={14} color="#a78bfa" />
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#a78bfa", textTransform: "uppercase", letterSpacing: 1.4 }}>ARIA readout</span>
+              </div>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.62)", margin: 0, lineHeight: 1.55 }}>{analytics.insight}</p>
+            </div>
+            <div style={{ borderLeft: "1px solid rgba(255,255,255,0.08)", paddingLeft: 18 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.28)", textTransform: "uppercase", letterSpacing: 1.2, margin: "0 0 6px" }}>Bottleneck</p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#fff", margin: 0 }}>{analytics.bottleneck}</p>
+            </div>
+            <div style={{ borderLeft: "1px solid rgba(255,255,255,0.08)", paddingLeft: 18 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.28)", textTransform: "uppercase", letterSpacing: 1.2, margin: "0 0 6px" }}>Next action</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, lineHeight: 1.5 }}>{analytics.nextBestAction}</p>
+            </div>
+          </div>
+
           {/* Rate rings row */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
             {METRICS.map(({ label, rate, color, icon: Icon, value }) => {
@@ -242,7 +272,7 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
           </div>
 
           {/* Funnel + Message preview */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12, marginBottom: 12 }}>
 
             {/* Funnel */}
             <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 14, padding: "22px 24px" }}>
@@ -321,6 +351,34 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 14, padding: "20px 22px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <Zap size={14} color="#a78bfa" />
+                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1.4 }}>
+                  Channel orchestration stream
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.24)" }}>latest simulated provider callbacks</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              {analytics.recentEvents.length === 0 ? (
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", margin: 0 }}>No delivery callbacks have arrived yet.</p>
+              ) : analytics.recentEvents.map((event) => {
+                const eventColor = event.event === "FAILED" ? "#f87171" : event.event === "CONVERTED" ? "#fb923c" : event.event === "CLICKED" ? "#38bdf8" : event.event === "OPENED" ? "#a78bfa" : "#34d399";
+                return (
+                  <div key={event.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.055)", borderRadius: 10, padding: "10px 12px" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: eventColor, boxShadow: `0 0 18px ${eventColor}` }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{event.event} · {event.customerName}</div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)", marginTop: 2 }}>{event.customerCity || "Unknown city"} · {new Date(event.timestamp).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>

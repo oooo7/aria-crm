@@ -1,493 +1,578 @@
 "use client";
 
-import type { CSSProperties, ElementType } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle,
-  Clock,
-  Loader2,
-  Megaphone,
-  MousePointer,
-  Rocket,
-  Sparkles,
-  Star,
-  TrendingDown,
-  TrendingUp,
-  Upload,
-  Users,
-  X,
-  Zap,
+  ArrowRight, Brain, CheckCircle2, CircleDollarSign,
+  GitCompareArrows, Gauge, Loader2, Radio, ShieldAlert,
+  Sparkles, Target, TrendingUp, Upload, Zap, Users,
+  Megaphone, Activity, Crown, AlertTriangle, Star,
+  ChevronRight, Clock,
 } from "lucide-react";
 import Link from "next/link";
-import { toast } from "@/components/ui/toast";
+import ImportCustomersModal from "@/components/ImportCustomersModal";
 
-interface Overview {
-  totalCustomers: number;
-  totalCampaigns: number;
-  totalRevenue: number;
-  totalSent: number;
-  totalDelivered: number;
-  totalOpened: number;
-  totalConverted: number;
-  avgOpenRate: string;
-  recentCampaigns: Array<{
-    id: string;
-    name: string;
-    status: string;
-    channel: string;
-    aiGenerated: boolean;
-    createdAt: string;
-    _count: { recipients: number };
-  }>;
-  topCities: Array<{ city: string; count: number }>;
+interface Action {
+  id: string; title: string; goal: string; audience: number; channel: string;
+  confidence: number; predictedReach: number; predictedOpens: number;
+  predictedClicks: number; predictedConversions: number; predictedRevenue: number;
+  riskRecovered: number; why: string; tradeoff: string; prompt: string;
 }
 
-interface Insight {
-  type: "warning" | "alert" | "opportunity";
-  icon: string;
-  title: string;
-  body: string;
-  action: string;
-  prompt: string;
-  tag: string;
+interface Mission {
+  businessHealthScore: number; revenueAtRisk: number; revenueOpportunity: number;
+  predictedMonthlyRevenue: number; avgOrderValue: number; totalCustomers: number;
+  totalSent: number; delivered: number; opened: number; clicked: number;
+  converted: number; failed: number;
+  segments: { lapsed: number; atRisk: number; vip: number; new: number };
+  executiveSummary: string; recommendedActions: Action[];
+  recentCampaigns: Array<{ id: string; name: string; status: string; channel: string; recipients: number; segment: string; aiGenerated: boolean }>;
 }
 
-const CARD: CSSProperties = {
-  background: "#0d0d1a",
-  border: "1px solid #1a1a2e",
-  borderRadius: 14,
+const glass = {
+  background: "linear-gradient(145deg, rgba(15,15,30,0.92), rgba(8,8,20,0.78))",
+  border: "1px solid rgba(255,255,255,0.075)",
+  boxShadow: "0 20px 60px rgba(0,0,0,0.32)",
+  backdropFilter: "blur(20px)",
 };
 
-const STATUS: Record<string, { color: string; bg: string; dot: string }> = {
-  SENT: { color: "#34d399", bg: "rgba(52,211,153,0.1)", dot: "#34d399" },
-  SENDING: { color: "#38bdf8", bg: "rgba(56,189,248,0.1)", dot: "#38bdf8" },
-  DRAFT: { color: "rgba(255,255,255,0.35)", bg: "rgba(255,255,255,0.06)", dot: "rgba(255,255,255,0.35)" },
-  FAILED: { color: "#f87171", bg: "rgba(248,113,113,0.1)", dot: "#f87171" },
+const channelColor: Record<string, string> = {
+  EMAIL: "#a78bfa", SMS: "#38bdf8", WHATSAPP: "#34d399", RCS: "#fb923c",
+};
+const channelBg: Record<string, string> = {
+  EMAIL: "rgba(167,139,250,0.12)", SMS: "rgba(56,189,248,0.12)",
+  WHATSAPP: "rgba(52,211,153,0.12)", RCS: "rgba(251,146,60,0.12)",
+};
+const statusColor: Record<string, string> = {
+  SENT: "#34d399", SENDING: "#38bdf8", DRAFT: "rgba(255,255,255,0.3)", FAILED: "#f87171",
 };
 
-const CHANNEL_COLOR: Record<string, string> = {
-  EMAIL: "#a78bfa",
-  SMS: "#38bdf8",
-  WHATSAPP: "#34d399",
-  RCS: "#fb923c",
-};
-
-const INSIGHT_STYLE: Record<Insight["type"], { border: string; iconBg: string; color: string }> = {
-  warning: { border: "#f59e0b", iconBg: "rgba(245,158,11,0.12)", color: "#f59e0b" },
-  alert: { border: "#f87171", iconBg: "rgba(248,113,113,0.12)", color: "#f87171" },
-  opportunity: { border: "#34d399", iconBg: "rgba(52,211,153,0.12)", color: "#34d399" },
-};
-
-const INSIGHT_ICONS: Record<string, ElementType> = {
-  alert: AlertTriangle,
-  clock: Clock,
-  rocket: Rocket,
-  star: Star,
-  "trending-down": TrendingDown,
-};
-
+function money(v: number) { return `₹${Math.round(v).toLocaleString("en-IN")}`; }
 function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  if (hour < 21) return "Good evening";
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  if (h < 21) return "Good evening";
   return "Good night";
 }
 
-function timeAgo(iso: string) {
-  const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (seconds < 60) return "just now";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-}
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  delta,
-}: {
-  label: string;
-  value: string;
-  icon: ElementType;
-  color: string;
-  delta: string;
-}) {
-  return (
-    <div style={{ ...CARD, padding: "20px 22px", position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", top: -24, right: -24, width: 90, height: 90, borderRadius: "50%", background: color, opacity: 0.06, filter: "blur(16px)" }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.32)", textTransform: "uppercase", letterSpacing: 1.2 }}>{label}</span>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Icon size={15} color={color} />
-        </div>
-      </div>
-      <div style={{ fontSize: 30, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", marginTop: 6 }}>{delta}</div>
-    </div>
-  );
-}
-
-function InsightCard({ insight, onAction }: { insight: Insight; onAction: (prompt: string) => void }) {
-  const style = INSIGHT_STYLE[insight.type];
-  const Icon = INSIGHT_ICONS[insight.icon] || Sparkles;
-
-  return (
-    <div style={{ ...CARD, padding: "16px 18px", borderLeft: `3px solid ${style.border}` }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: style.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Icon size={15} color={style.color} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 5 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{insight.title}</span>
-            <span style={{ fontSize: 9, fontWeight: 800, color: style.color, background: style.iconBg, padding: "2px 6px", borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>
-              {insight.tag}
-            </span>
-          </div>
-          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.42)", margin: 0, lineHeight: 1.5 }}>{insight.body}</p>
-        </div>
-      </div>
-      <button
-        onClick={() => onAction(insight.prompt)}
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", marginTop: 14, background: `${style.border}14`, border: `1px solid ${style.border}30`, color: style.color, fontSize: 12, fontWeight: 700, padding: "8px 12px", borderRadius: 8, cursor: "pointer" }}
-      >
-        <Sparkles size={12} /> {insight.action} with ARIA
-      </button>
-    </div>
-  );
-}
-
-function CsvModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (count: number) => void }) {
-  const [dragging, setDragging] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  async function handleUpload() {
-    if (!file) return;
-    setUploading(true);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/import", { method: "POST", body: formData });
-      const data = await res.json();
-
-      if (!res.ok || !data.ok) {
-        toast.error(data.error || "Upload failed");
-        return;
-      }
-
-      setResult({ created: data.created, skipped: data.skipped });
-      onSuccess(data.created);
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <div
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-      style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-    >
-      <div style={{ ...CARD, width: 500, maxWidth: "100%", padding: "26px 30px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: 0 }}>Import Customers</h2>
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.36)", margin: "4px 0 0" }}>Upload a CSV with name, email, city, phone, totalSpent, and orderCount.</p>
-          </div>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.45)", cursor: "pointer", padding: 4 }}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {!result ? (
-          <>
-            <div
-              onClick={() => inputRef.current?.click()}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                const dropped = event.dataTransfer.files[0];
-                if (dropped?.name.endsWith(".csv")) setFile(dropped);
-              }}
-              style={{ border: `2px dashed ${dragging ? "#a78bfa" : "#262640"}`, borderRadius: 12, padding: "34px 22px", textAlign: "center", background: dragging ? "rgba(124,58,237,0.08)" : "rgba(255,255,255,0.02)", cursor: "pointer", marginBottom: 16 }}
-            >
-              <Upload size={28} color={dragging ? "#a78bfa" : "rgba(255,255,255,0.25)"} style={{ marginBottom: 12 }} />
-              {file ? (
-                <>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: "#a78bfa", margin: "0 0 4px" }}>{file.name}</p>
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.34)", margin: 0 }}>{(file.size / 1024).toFixed(1)} KB selected</p>
-                </>
-              ) : (
-                <>
-                  <p style={{ fontSize: 14, color: "rgba(255,255,255,0.58)", margin: "0 0 4px" }}>Drop CSV here or click to browse</p>
-                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", margin: 0 }}>Required columns: name, email</p>
-                </>
-              )}
-              <input ref={inputRef} type="file" accept=".csv" style={{ display: "none" }} onChange={(event) => setFile(event.target.files?.[0] || null)} />
-            </div>
-
-            <div style={{ background: "rgba(255,255,255,0.025)", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.3)", margin: "0 0 5px", textTransform: "uppercase", letterSpacing: 1 }}>CSV example</p>
-              <code style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
-                name,email,phone,city,totalSpent,orderCount<br />
-                Priya Sharma,priya@example.com,+919876543210,Mumbai,4500,2
-              </code>
-            </div>
-
-            <button
-              onClick={handleUpload}
-              disabled={!file || uploading}
-              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: file && !uploading ? "linear-gradient(135deg, #7c3aed, #0891b2)" : "rgba(255,255,255,0.06)", color: file && !uploading ? "#fff" : "rgba(255,255,255,0.28)", border: "none", cursor: file && !uploading ? "pointer" : "not-allowed", fontSize: 14, fontWeight: 700, padding: "12px 18px", borderRadius: 10 }}
-            >
-              {uploading ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Importing...</> : <><Upload size={16} /> Import Customers</>}
-            </button>
-          </>
-        ) : (
-          <div style={{ textAlign: "center", padding: "18px 0" }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, background: "rgba(52,211,153,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-              <CheckCircle size={26} color="#34d399" />
-            </div>
-            <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: "0 0 6px" }}>Import Complete</p>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.42)", margin: "0 0 20px" }}>{result.created} customers added or updated, {result.skipped} skipped</p>
-            <button onClick={onClose} style={{ background: "linear-gradient(135deg, #7c3aed, #0891b2)", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, padding: "10px 28px", borderRadius: 10 }}>
-              Done
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default function Dashboard() {
-  const [data, setData] = useState<Overview | null>(null);
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [showImport, setShowImport] = useState(false);
-
-  async function loadDashboard() {
-    const [overviewRes, insightsRes] = await Promise.all([
-      fetch("/api/analytics/overview"),
-      fetch("/api/ai/insights"),
-    ]);
-
-    const overview = await overviewRes.json();
-    const insightData = await insightsRes.json();
-
-    setData(overview);
-    setInsights(insightData.insights || []);
-  }
-
+function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string }) {
+  const [display, setDisplay] = useState(0);
   useEffect(() => {
-    void loadDashboard();
-  }, []);
+    const start = display, delta = value - start, started = performance.now(), duration = 950;
+    let frame = 0;
+    function tick(now: number) {
+      const p = Math.min(1, (now - started) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(Math.round(start + delta * eased));
+      if (p < 1) frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return <>{prefix}{display.toLocaleString("en-IN")}</>;
+}
 
-  function handleInsightAction(prompt: string) {
-    sessionStorage.setItem("aria_prefill", prompt);
+function HealthRing({ score }: { score: number }) {
+  const radius = 52, circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+  const color = score > 75 ? "#34d399" : score > 58 ? "#f59e0b" : "#f87171";
+  const label = score > 75 ? "Healthy" : score > 58 ? "At risk" : "Critical";
+  return (
+    <div style={{ position: "relative", width: 132, height: 132, flexShrink: 0 }}>
+      <svg width="132" height="132" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="66" cy="66" r={radius} stroke="rgba(255,255,255,0.06)" strokeWidth="9" fill="none" />
+        <motion.circle
+          cx="66" cy="66" r={radius} stroke={color} strokeWidth="9" fill="none"
+          strokeLinecap="round" strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 1.4, ease: "easeOut" }}
+        />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 32, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{score}</div>
+        <div style={{ fontSize: 9, color, textTransform: "uppercase", letterSpacing: 1.4, marginTop: 3, fontWeight: 700 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
+  return (
+    <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden", marginTop: 6 }}>
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }}
+        transition={{ duration: 1.1, ease: "easeOut" }}
+        style={{ height: "100%", background: color, borderRadius: 4 }}
+      />
+    </div>
+  );
+}
+
+function ActionCard({ action, index }: { action: Action; index: number }) {
+  const color = channelColor[action.channel] || "#a78bfa";
+  const bg = channelBg[action.channel] || "rgba(167,139,250,0.12)";
+
+  function sendToCommand() {
+    sessionStorage.setItem("aria_prefill", action.prompt);
     window.location.href = "/command";
   }
 
-  if (!data) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", flexDirection: "column", gap: 16 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg, #7c3aed, #0891b2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Sparkles size={22} color="white" />
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08, duration: 0.45 }}
+      whileHover={{ y: -5, transition: { duration: 0.2 } }}
+      style={{ ...glass, borderRadius: 18, padding: 20, cursor: "default", border: `1px solid rgba(255,255,255,0.075)` }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: bg, color, fontSize: 10, fontWeight: 800, padding: "3px 9px", borderRadius: 6, letterSpacing: 0.8, textTransform: "uppercase" }}>
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: color, display: "inline-block" }} />
+              {action.channel}
+            </span>
+          </div>
+          <h3 style={{ fontSize: 15, fontWeight: 800, color: "#fff", margin: "0 0 3px", lineHeight: 1.3 }}>{action.title}</h3>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.38)", margin: 0 }}>{action.goal}</p>
         </div>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.35)" }}>Loading ARIA...</p>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: 24, fontWeight: 900, color, lineHeight: 1 }}>{action.confidence}%</div>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>confidence</div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 12 }}>
+        {[["Reach", action.predictedReach], ["Opens", action.predictedOpens], ["Clicks", action.predictedClicks], ["Conv.", action.predictedConversions]].map(([label, value]) => (
+          <div key={String(label)} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 9, padding: "9px 7px", textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{Number(value).toLocaleString("en-IN")}</div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", marginTop: 2 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginBottom: 12 }}>
+        <div style={{ background: "rgba(52,211,153,0.07)", border: "1px solid rgba(52,211,153,0.13)", borderRadius: 9, padding: 11 }}>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Revenue</div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#34d399" }}>{money(action.predictedRevenue)}</div>
+        </div>
+        <div style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.13)", borderRadius: 9, padding: 11 }}>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Recovered</div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#f59e0b" }}>{money(action.riskRecovered)}</div>
+        </div>
+      </div>
+
+      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.46)", margin: "0 0 6px", lineHeight: 1.55 }}>{action.why}</p>
+      <p style={{ fontSize: 10, color: "rgba(255,255,255,0.26)", margin: "0 0 14px", lineHeight: 1.45 }}>Tradeoff: {action.tradeoff}</p>
+
+      <button
+        onClick={sendToCommand}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: `linear-gradient(135deg, ${color}CC, #0891b2)`, color: "#fff", border: "none", borderRadius: 10, padding: "10px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer", transition: "opacity 0.15s" }}
+        onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = "0.88"}
+        onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = "1"}
+      >
+        Brief ARIA to execute <ArrowRight size={13} />
+      </button>
+    </motion.div>
+  );
+}
+
+function DecisionEngine({ action, mission }: { action: Action; mission: Mission }) {
+  const alternatives = mission.recommendedActions.filter(a => a.id !== action.id).slice(0, 2);
+  const color = channelColor[action.channel] || "#a78bfa";
+
+  function sendToCommand() {
+    sessionStorage.setItem("aria_prefill", action.prompt);
+    window.location.href = "/command";
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{ ...glass, borderRadius: 22, padding: 26, marginBottom: 16, border: `1px solid ${color}35` }}
+    >
+      <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 24, alignItems: "stretch" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Brain size={14} color={color} />
+            </div>
+            <span style={{ fontSize: 10, fontWeight: 900, color, textTransform: "uppercase", letterSpacing: 1.6 }}>ARIA Decision Engine</span>
+            <span style={{ fontSize: 9, background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 4, padding: "2px 7px", fontWeight: 700, letterSpacing: 0.6 }}>Top priority</span>
+          </div>
+          <h2 style={{ fontSize: 26, lineHeight: 1.1, fontWeight: 900, color: "#fff", margin: "0 0 10px" }}>{action.title}</h2>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", lineHeight: 1.65, margin: "0 0 18px" }}>{action.why}</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 18 }}>
+            {[
+              ["Expected Revenue", money(action.predictedRevenue), "#34d399"],
+              ["Confidence", `${action.confidence}%`, color],
+              ["Audience size", action.audience.toLocaleString("en-IN"), "#38bdf8"],
+            ].map(([label, value, metricColor]) => (
+              <div key={String(label)} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: 14 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.28)", textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
+                <div style={{ fontSize: 19, fontWeight: 950, color: String(metricColor), marginTop: 5 }}>{value}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={sendToCommand} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: `linear-gradient(135deg, ${color}, #0891b2)`, color: "#fff", border: "none", borderRadius: 12, padding: "13px 20px", fontSize: 13, fontWeight: 800, cursor: "pointer", boxShadow: `0 8px 24px ${color}30` }}>
+            Approve strategy in Growth Agent <ArrowRight size={14} />
+          </button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 18, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+              <GitCompareArrows size={13} color="#fbbf24" />
+              <span style={{ fontSize: 9, fontWeight: 900, color: "rgba(255,255,255,0.32)", textTransform: "uppercase", letterSpacing: 1.2 }}>Why this over alternatives</span>
+            </div>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.52)", lineHeight: 1.6, margin: "0 0 12px" }}>{action.tradeoff}</p>
+            {alternatives.map(alt => (
+              <div key={alt.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 8 }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.38)" }}>{alt.title}</span>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.24)", whiteSpace: "nowrap" }}>{money(alt.predictedRevenue)} · {alt.confidence}%</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.14)", borderRadius: 16, padding: 16 }}>
+            <span style={{ fontSize: 9, fontWeight: 900, color: "#34d399", textTransform: "uppercase", letterSpacing: 1.2 }}>Signals used</span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 10 }}>
+              {[
+                `${mission.segments.vip} VIP`,
+                `${mission.segments.lapsed} lapsed`,
+                `${mission.segments.atRisk} at risk`,
+                `${money(mission.avgOrderValue)} AOV`,
+              ].map(signal => (
+                <div key={signal} style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", background: "rgba(0,0,0,0.2)", borderRadius: 9, padding: "7px 10px" }}>{signal}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+export default function MissionControl() {
+  const [mission, setMission] = useState<Mission | null>(null);
+  const [goal, setGoal] = useState("Increase revenue by 15% without over-discounting");
+  const [planning, setPlanning] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [plan, setPlan] = useState<null | {
+    confidence: number; predictedReach: number; predictedConversions: number;
+    predictedRevenue: number; predictedROI: string; strategy: string;
+    reasoning: string[]; workflow: string[]; campaigns: Action[];
+  }>(null);
+
+  function loadMission() {
+    fetch("/api/ai/mission").then(r => r.json()).then(setMission);
+  }
+
+  useEffect(() => { loadMission(); }, []);
+
+  async function buildPlan() {
+    setPlanning(true); setPlan(null);
+    const res = await fetch("/api/ai/plan", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal }),
+    });
+    const data = await res.json();
+    setPlan(data.plan);
+    setPlanning(false);
+  }
+
+  const agentSteps = useMemo(() => plan?.workflow || [
+    "Analyzing customer base", "Scoring revenue risk",
+    "Ranking lifecycle opportunities", "Waiting for goal",
+  ], [plan]);
+
+  if (!mission) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "radial-gradient(circle at 30% 20%, rgba(124,58,237,0.15), transparent 35%), #080810" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ width: 64, height: 64, borderRadius: 18, background: "rgba(124,58,237,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", animation: "glow-pulse 2s ease-in-out infinite" }}>
+            <Sparkles size={28} color="#a78bfa" />
+          </div>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 15, fontWeight: 600 }}>ARIA is preparing the CMO briefing...</p>
+          <p style={{ color: "rgba(255,255,255,0.25)", fontSize: 12, marginTop: 6 }}>Analyzing customer lifecycle · Scoring revenue risk</p>
+        </div>
       </div>
     );
   }
 
-  const funnel = [
-    { label: "Sent", value: data.totalSent, color: "rgba(255,255,255,0.58)" },
-    { label: "Delivered", value: data.totalDelivered, color: "#34d399" },
-    { label: "Opened", value: data.totalOpened, color: "#a78bfa" },
-    { label: "Converted", value: data.totalConverted, color: "#fb923c" },
-  ];
+  const totalEngaged = mission.delivered + mission.opened + mission.clicked;
+  const campaignDeliveryRate = mission.totalSent > 0 ? ((mission.delivered / mission.totalSent) * 100).toFixed(0) : "0";
 
   return (
-    <div style={{ padding: "36px 40px 60px", maxWidth: 1120, margin: "0 auto" }}>
-      {showImport && (
-        <CsvModal
-          onClose={() => setShowImport(false)}
-          onSuccess={(count) => {
-            toast.success(`${count} customers imported`);
-            void loadDashboard();
-          }}
-        />
-      )}
+    <div style={{ minHeight: "100vh", padding: "30px 36px 70px", background: "radial-gradient(ellipse at 10% 0%, rgba(124,58,237,0.16) 0%, transparent 45%), radial-gradient(ellipse at 90% 5%, rgba(8,145,178,0.12) 0%, transparent 40%), #080810" }}>
+      {showImport && <ImportCustomersModal onClose={() => setShowImport(false)} onImported={loadMission} />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 34, gap: 20 }}>
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, marginBottom: 22 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: "#fff", margin: "0 0 6px" }}>{getGreeting()}.</h1>
-          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.36)", margin: 0 }}>ARIA is monitoring Lumora's shoppers, campaigns, and revenue opportunities.</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 10 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(167,139,250,0.1)", border: "1px solid rgba(167,139,250,0.2)", color: "#c4b5fd", borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase" }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#a78bfa", animation: "pulse-dot 2s ease-in-out infinite" }} />
+              ARIA Mission Control
+            </span>
+          </div>
+          <h1 style={{ fontSize: 32, lineHeight: 1.08, fontWeight: 900, color: "#fff", margin: "0 0 9px" }}>
+            {getGreeting()}. ARIA has a revenue plan.
+          </h1>
+          <p style={{ color: "rgba(255,255,255,0.42)", fontSize: 13.5, maxWidth: 680, lineHeight: 1.65, margin: 0 }}>{mission.executiveSummary}</p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => setShowImport(true)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.66)", fontSize: 13, fontWeight: 700, padding: "9px 16px", borderRadius: 10, cursor: "pointer" }}
-          >
-            <Upload size={14} /> Import CSV
+        <div style={{ display: "flex", gap: 9, flexShrink: 0 }}>
+          <button onClick={() => setShowImport(true)} style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.65)", fontSize: 12, fontWeight: 700, padding: "10px 15px", borderRadius: 11, cursor: "pointer" }}>
+            <Upload size={13} /> Import Customers
           </button>
-          <Link href="/command" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", background: "linear-gradient(135deg, #7c3aed, #0891b2)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "9px 18px", borderRadius: 10, boxShadow: "0 2px 16px rgba(124,58,237,0.32)" }}>
-            <Sparkles size={14} /> Ask ARIA
+          <Link href="/command" style={{ display: "inline-flex", alignItems: "center", gap: 7, textDecoration: "none", background: "linear-gradient(135deg, #7c3aed, #0891b2)", color: "#fff", fontSize: 12, fontWeight: 800, padding: "10px 16px", borderRadius: 11, boxShadow: "0 12px 36px rgba(124,58,237,0.28)" }}>
+            Open Growth Agent <Sparkles size={13} />
           </Link>
         </div>
-      </div>
+      </motion.div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 26 }}>
-        <StatCard label="Total Customers" value={data.totalCustomers.toLocaleString()} icon={Users} color="#a78bfa" delta="Shoppers in CRM" />
-        <StatCard label="Campaigns" value={data.totalCampaigns.toLocaleString()} icon={Megaphone} color="#38bdf8" delta="All-time campaigns" />
-        <StatCard label="Avg Open Rate" value={`${data.avgOpenRate}%`} icon={TrendingUp} color="#34d399" delta="Across delivered messages" />
-        <StatCard label="Conversions" value={data.totalConverted.toLocaleString()} icon={MousePointer} color="#fb923c" delta="Attributed orders" />
-      </div>
-
-      {insights.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: "linear-gradient(135deg, #7c3aed, #0891b2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Sparkles size={11} color="white" />
+      {/* KPI strip */}
+      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 11, marginBottom: 16 }}>
+        {[
+          { label: "Revenue at risk", value: mission.revenueAtRisk, icon: ShieldAlert, color: "#f87171", prefix: "₹", sub: `${mission.segments.lapsed + mission.segments.atRisk} shoppers drifting` },
+          { label: "Revenue opportunity", value: mission.revenueOpportunity, icon: Target, color: "#34d399", prefix: "₹", sub: `${mission.segments.vip + mission.segments.new} shoppers to activate` },
+          { label: "Predicted monthly", value: mission.predictedMonthlyRevenue, icon: TrendingUp, color: "#38bdf8", prefix: "₹", sub: "Based on current trajectory" },
+          { label: "Avg order value", value: mission.avgOrderValue, icon: CircleDollarSign, color: "#fbbf24", prefix: "₹", sub: `${mission.totalCustomers.toLocaleString()} active shoppers` },
+        ].map(({ label, value, icon: Icon, color, prefix, sub }, i) => (
+          <motion.div key={label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.04 }} whileHover={{ y: -3, transition: { duration: 0.18 } }} style={{ ...glass, borderRadius: 16, padding: "18px 20px", position: "relative", overflow: "hidden" }}>
+            <div style={{ position: "absolute", right: -20, top: -20, width: 80, height: 80, borderRadius: "50%", background: color, opacity: 0.07, filter: "blur(16px)" }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: `${color}16`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon size={15} color={color} />
+              </div>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.48)", textTransform: "uppercase", letterSpacing: 1.4 }}>ARIA Insights</span>
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.22)" }}>AI-detected opportunities from shopper behavior</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(insights.length, 3)}, 1fr)`, gap: 12 }}>
-            {insights.slice(0, 3).map((insight) => (
-              <InsightCard key={insight.title} insight={insight} onAction={handleInsightAction} />
-            ))}
-          </div>
-        </div>
-      )}
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", textTransform: "uppercase", letterSpacing: 1.1, fontWeight: 800, marginBottom: 5 }}>{label}</div>
+            <div style={{ fontSize: 23, color, fontWeight: 900, lineHeight: 1, marginBottom: 6 }}>
+              <AnimatedNumber value={value} prefix={prefix} />
+            </div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.22)" }}>{sub}</div>
+          </motion.div>
+        ))}
+      </motion.div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 16, marginBottom: 16 }}>
-        <div style={{ ...CARD, padding: "22px 24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.42)", textTransform: "uppercase", letterSpacing: 1.4 }}>Recent Campaigns</span>
-            <Link href="/campaigns" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#a78bfa", textDecoration: "none" }}>
-              View all <ArrowRight size={11} />
+      {/* Decision Engine — hero */}
+      {mission.recommendedActions[0] && <DecisionEngine action={mission.recommendedActions[0]} mission={mission} />}
+
+      {/* Health + Segments + Agent */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 16 }}>
+        {/* Business health */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ ...glass, borderRadius: 20, padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 18 }}>
+            <Gauge size={15} color="#34d399" />
+            <span style={{ fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,0.38)", textTransform: "uppercase", letterSpacing: 1.4 }}>Business health score</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 18 }}>
+            <HealthRing score={mission.businessHealthScore} />
+            <div>
+              <h3 style={{ fontSize: 15, color: "#fff", margin: "0 0 7px", fontWeight: 800, lineHeight: 1.3 }}>Retention pressure is visible, but recoverable.</h3>
+              <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.42)", lineHeight: 1.55, margin: 0 }}>ARIA is prioritizing lifecycle moments where a campaign can protect revenue.</p>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14 }}>
+            <div style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: 1.4, marginBottom: 10 }}>Campaign delivery health</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.42)" }}>Delivery rate</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#34d399" }}>{campaignDeliveryRate}%</span>
+            </div>
+            <MiniBar value={mission.delivered} max={mission.totalSent || 1} color="#34d399" />
+          </div>
+        </motion.div>
+
+        {/* Segment breakdown */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }} style={{ ...glass, borderRadius: 20, padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <Users size={15} color="#a78bfa" />
+              <span style={{ fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,0.38)", textTransform: "uppercase", letterSpacing: 1.4 }}>Shopper pulse</span>
+            </div>
+            <Link href="/customers" style={{ fontSize: 10, color: "#a78bfa", textDecoration: "none", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              View all <ChevronRight size={11} />
             </Link>
           </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[
+              { label: "VIP shoppers", value: mission.segments.vip, icon: Crown, color: "#fbbf24", sub: "₹20K+ lifetime value" },
+              { label: "At risk", value: mission.segments.atRisk, icon: AlertTriangle, color: "#f87171", sub: "45–89 days inactive" },
+              { label: "Lapsed", value: mission.segments.lapsed, icon: TrendingUp, color: "#f59e0b", sub: "90+ days inactive" },
+              { label: "New shoppers", value: mission.segments.new, icon: Star, color: "#38bdf8", sub: "First order this month" },
+            ].map(({ label, value, icon: Icon, color, sub }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 9, background: `${color}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon size={14} color={color} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                    <span style={{ fontSize: 12, color: "#fff", fontWeight: 600 }}>{label}</span>
+                    <span style={{ fontSize: 15, fontWeight: 900, color }}>{value}</span>
+                  </div>
+                  <MiniBar value={value} max={mission.totalCustomers} color={color} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
 
-          {data.recentCampaigns.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "32px 0" }}>
-              <Megaphone size={28} color="rgba(255,255,255,0.08)" style={{ margin: "0 auto 10px", display: "block" }} />
-              <p style={{ color: "rgba(255,255,255,0.24)", fontSize: 13, margin: 0 }}>No campaigns yet</p>
-              <Link href="/command" style={{ color: "#a78bfa", fontSize: 12, textDecoration: "none", display: "block", marginTop: 8 }}>Create one with ARIA</Link>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              {data.recentCampaigns.map((campaign) => {
-                const status = STATUS[campaign.status] || STATUS.DRAFT;
-                const channelColor = CHANNEL_COLOR[campaign.channel] || "rgba(255,255,255,0.4)";
-
-                return (
-                  <Link key={campaign.id} href={`/campaigns/${campaign.id}`} style={{ textDecoration: "none" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 12px", borderRadius: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: 9, background: `${channelColor}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: channelColor }}>
-                          {campaign.channel[0]}
-                        </div>
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.82)" }}>{campaign.name}</span>
-                            {campaign.aiGenerated && <span style={{ fontSize: 9, fontWeight: 800, background: "rgba(124,58,237,0.22)", color: "#a78bfa", padding: "1px 5px", borderRadius: 3, letterSpacing: 0.5 }}>AI</span>}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                            <span style={{ fontSize: 11, color: channelColor }}>{campaign.channel}</span>
-                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>-</span>
-                            <Clock size={10} color="rgba(255,255,255,0.22)" />
-                            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.24)" }}>{timeAgo(campaign.createdAt)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{campaign._count.recipients.toLocaleString()} sent</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, background: status.bg, borderRadius: 20, padding: "3px 9px" }}>
-                          <div style={{ width: 5, height: 5, borderRadius: "50%", background: status.dot }} />
-                          <span style={{ fontSize: 11, fontWeight: 700, color: status.color }}>{campaign.status}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
+        {/* AI reasoning engine */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} style={{ ...glass, borderRadius: 20, padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 16 }}>
+            <Brain size={15} color="#a78bfa" />
+            <span style={{ fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,0.38)", textTransform: "uppercase", letterSpacing: 1.4 }}>AI reasoning engine</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            {agentSteps.map((step, i) => (
+              <motion.div key={step} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 + i * 0.06 }} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <div style={{ width: 20, height: 20, borderRadius: 6, background: i < agentSteps.length - 1 || plan ? "rgba(52,211,153,0.12)" : "rgba(167,139,250,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <CheckCircle2 size={11} color={i < agentSteps.length - 1 || plan ? "#34d399" : "#a78bfa"} />
+                </div>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.56)" }}>{step}</span>
+              </motion.div>
+            ))}
+          </div>
+          {!plan && (
+            <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", margin: 0, fontStyle: "italic" }}>Enter a goal below to build a full strategy.</p>
             </div>
           )}
-        </div>
+        </motion.div>
+      </div>
 
-        <div style={{ ...CARD, padding: "22px 24px" }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.42)", textTransform: "uppercase", letterSpacing: 1.4, display: "block", marginBottom: 20 }}>Top Cities</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
-            {data.topCities.map((city, index) => {
-              const pct = Math.round((city.count / (data.topCities[0]?.count || 1)) * 100);
-              return (
-                <div key={city.city}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontFamily: "monospace", width: 14 }}>#{index + 1}</span>
-                      <span style={{ fontSize: 13, color: "rgba(255,255,255,0.62)" }}>{city.city}</span>
+      {/* Goal builder + action cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 16 }}>
+        {/* Goal planner */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} style={{ ...glass, borderRadius: 20, padding: 22 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+            <Zap size={15} color="#a78bfa" />
+            <span style={{ fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,0.38)", textTransform: "uppercase", letterSpacing: 1.4 }}>Goal-driven strategy</span>
+          </div>
+          <textarea
+            value={goal}
+            onChange={e => setGoal(e.target.value)}
+            style={{ width: "100%", minHeight: 80, resize: "none", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 12, outline: "none", color: "#fff", fontSize: 13, lineHeight: 1.6, padding: 12, marginBottom: 11, fontFamily: "inherit" }}
+          />
+          <button onClick={buildPlan} disabled={planning || !goal.trim()} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, border: "none", borderRadius: 11, padding: "11px 14px", background: planning ? "rgba(124,58,237,0.22)" : "linear-gradient(135deg, #7c3aed, #0891b2)", color: "#fff", fontWeight: 800, cursor: planning ? "wait" : "pointer", fontSize: 12 }}>
+            {planning ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Brain size={14} />}
+            {planning ? "ARIA is building the strategy..." : "Ask ARIA to build strategy"}
+          </button>
+          <AnimatePresence>
+            {plan && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ marginTop: 14, background: "rgba(52,211,153,0.07)", border: "1px solid rgba(52,211,153,0.16)", borderRadius: 12, padding: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 7, marginBottom: 10 }}>
+                  {[
+                    ["Reach", plan.predictedReach],
+                    ["Conv.", plan.predictedConversions],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} style={{ background: "rgba(0,0,0,0.18)", borderRadius: 9, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 15, color: "#fff", fontWeight: 900 }}>{Number(value).toLocaleString("en-IN")}</div>
+                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.32)", marginTop: 2 }}>{label}</div>
                     </div>
-                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{city.count}</span>
-                  </div>
-                  <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: `${pct}%`, background: "linear-gradient(90deg, #7c3aed, #0891b2)", borderRadius: 4 }} />
-                  </div>
+                  ))}
+                  {[
+                    ["Revenue", money(plan.predictedRevenue)],
+                    ["Conf.", `${plan.confidence}%`],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} style={{ background: "rgba(0,0,0,0.18)", borderRadius: 9, padding: "8px 10px" }}>
+                      <div style={{ fontSize: 15, color: "#34d399", fontWeight: 900 }}>{value}</div>
+                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.32)", marginTop: 2 }}>{label}</div>
+                    </div>
+                  ))}
                 </div>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", lineHeight: 1.55, margin: "0 0 8px" }}>{plan.strategy}</p>
+                <p style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", margin: 0 }}>Predicted ROI: {plan.predictedROI}. Human approval required before launch.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+
+        {/* Action cards */}
+        {mission.recommendedActions.slice(1, 3).map((action, i) => (
+          <ActionCard key={action.id} action={action} index={i} />
+        ))}
+      </div>
+
+      {/* Recent campaigns */}
+      {mission.recentCampaigns.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} style={{ ...glass, borderRadius: 20, padding: 22, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <Megaphone size={15} color="#38bdf8" />
+              <span style={{ fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,0.38)", textTransform: "uppercase", letterSpacing: 1.4 }}>Recent campaigns</span>
+            </div>
+            <Link href="/campaigns" style={{ fontSize: 10, color: "#38bdf8", textDecoration: "none", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              View all <ChevronRight size={11} />
+            </Link>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {mission.recentCampaigns.map(c => {
+              const cColor = channelColor[c.channel] || "#a78bfa";
+              const sColor = statusColor[c.status] || "rgba(255,255,255,0.3)";
+              return (
+                <Link key={c.id} href={`/campaigns/${c.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.055)", borderRadius: 11, padding: "12px 14px", textDecoration: "none", transition: "all 0.12s" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.055)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.1)"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.055)"; }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 9, background: channelBg[c.channel] || "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: cColor, flexShrink: 0 }}>
+                      {c.channel[0]}
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>{c.name}</span>
+                        {c.aiGenerated && <span style={{ fontSize: 8, background: "rgba(124,58,237,0.2)", color: "#a78bfa", padding: "2px 5px", borderRadius: 3, fontWeight: 700, letterSpacing: 0.6 }}>AI</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", marginTop: 1 }}>{c.segment} · {c.recipients.toLocaleString()} recipients</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: sColor, background: `${sColor}14`, border: `1px solid ${sColor}30`, padding: "3px 9px", borderRadius: 999 }}>{c.status}</span>
+                    <ArrowRight size={13} color="rgba(255,255,255,0.2)" />
+                  </div>
+                </Link>
               );
             })}
           </div>
-        </div>
+        </motion.div>
+      )}
+
+      {/* Bottom action cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        {mission.recommendedActions.slice(3, 6).map((action, i) => (
+          <ActionCard key={action.id} action={action} index={i + 3} />
+        ))}
       </div>
 
-      <div style={{ ...CARD, padding: "18px 24px", marginBottom: 16 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.42)", textTransform: "uppercase", letterSpacing: 1.4, display: "block", marginBottom: 16 }}>Overall Delivery Funnel</span>
-        <div style={{ display: "flex" }}>
-          {funnel.map((item, index) => {
-            const base = data.totalSent || 1;
-            const pct = ((item.value / base) * 100).toFixed(1);
-            return (
-              <div key={item.label} style={{ flex: 1, padding: "0 16px", borderRight: index < funnel.length - 1 ? "1px solid #1a1a2e" : "none" }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: item.color, lineHeight: 1 }}>{item.value.toLocaleString()}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4 }}>{item.label}</div>
-                <div style={{ fontSize: 10, color: item.color, marginTop: 4, fontFamily: "monospace", opacity: 0.75 }}>{pct}%</div>
-              </div>
-            );
-          })}
+      {/* Activity feed */}
+      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }} style={{ ...glass, borderRadius: 20, padding: 22, marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+          <Activity size={15} color="#38bdf8" />
+          <span style={{ fontSize: 10, fontWeight: 900, color: "rgba(255,255,255,0.38)", textTransform: "uppercase", letterSpacing: 1.4 }}>ARIA activity feed</span>
         </div>
-      </div>
-
-      <div style={{ background: "rgba(124,58,237,0.07)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 14, padding: "22px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: "linear-gradient(135deg, #7c3aed, #0891b2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Zap size={20} color="white" />
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Try ARIA's AI Command</div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.38)" }}>Describe a goal. ARIA builds the audience, writes the copy, picks a channel, and launches.</div>
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {[
+            { text: `Analyzed ${mission.totalCustomers.toLocaleString()} customers`, color: "#34d399" },
+            { text: `Detected ${(mission.segments.atRisk + mission.segments.lapsed)} shoppers with churn pressure`, color: "#f87171" },
+            { text: `Ranked ${mission.recommendedActions.length} revenue plays`, color: "#a78bfa" },
+            { text: `Estimated ${money(mission.revenueOpportunity)} opportunity`, color: "#34d399" },
+            { text: `${mission.delivered} messages delivered across all campaigns`, color: "#38bdf8" },
+            { text: `${mission.converted} conversions recorded this period`, color: "#fb923c" },
+            ...(plan ? plan.workflow.slice(0, 2).map(w => ({ text: w, color: "#a78bfa" })) : [{ text: "Waiting for human goal or approval", color: "rgba(255,255,255,0.35)" }]),
+          ].slice(0, 8).map((item, i) => (
+            <motion.div key={item.text} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} style={{ display: "flex", alignItems: "center", gap: 9, background: "rgba(255,255,255,0.025)", borderRadius: 9, padding: "9px 12px" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: item.color, boxShadow: `0 0 12px ${item.color}60`, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.52)" }}>{item.text}</span>
+            </motion.div>
+          ))}
         </div>
-        <Link href="/command" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", background: "linear-gradient(135deg, #7c3aed, #0891b2)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "10px 22px", borderRadius: 10, whiteSpace: "nowrap", boxShadow: "0 2px 16px rgba(124,58,237,0.3)" }}>
-          Open AI Command <ArrowRight size={14} />
-        </Link>
-      </div>
+      </motion.div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.75)} } @keyframes glow-pulse { 0%,100%{box-shadow:0 0 20px rgba(124,58,237,0.2)} 50%{box-shadow:0 0 40px rgba(124,58,237,0.45)} }`}</style>
     </div>
   );
 }

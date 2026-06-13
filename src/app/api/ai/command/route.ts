@@ -141,21 +141,27 @@ export async function POST(req: NextRequest) {
   }
 
   let parsed: object;
+  let source: "gemini" | "fallback" = "gemini";
 
   try {
-    // Current (tries Gemini first, falls back if quota hit)
     parsed = await callGemini(prompt);
   } catch {
-    // Fall back to smart responses
     console.log("Using smart fallback for:", prompt);
     parsed = matchResponse(prompt);
+    source = "fallback";
   }
+
+  const typedParsed = parsed as Record<string, unknown>;
 
   try {
     await prisma.aICommand.create({
-      data: { prompt, response: JSON.stringify(parsed), actions: parsed },
+      data: {
+        prompt,
+        response: JSON.stringify(parsed),
+        actions: parsed,
+      },
     });
   } catch { /* ignore db error */ }
 
-  return NextResponse.json({ ok: true, data: parsed });
+  return NextResponse.json({ ok: true, data: parsed, source, intent: typedParsed.intent });
 }

@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
 
   let created = 0;
   let skipped = 0;
+  let ordersCreated = 0;
 
   for (const line of lines.slice(1)) {
     const values = parseCsvLine(line);
@@ -70,29 +71,63 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      await prisma.customer.upsert({
+      const orderAmount = parseFloat(row.orderamount || row.amount || "0") || 0;
+      const orderDate = row.orderdate || row.lastorderat
+        ? new Date(row.orderdate || row.lastorderat)
+        : new Date();
+      const baseTotalSpent = parseFloat(row.totalspent || "0") || 0;
+      const baseOrderCount = parseInt(row.ordercount || "0", 10) || 0;
+
+      const customer = await prisma.customer.upsert({
         where: { email: row.email },
         update: {
           name: row.name,
           phone: row.phone || undefined,
           city: row.city || undefined,
-          totalSpent: parseFloat(row.totalspent || "0") || 0,
-          orderCount: parseInt(row.ordercount || "0", 10) || 0,
+          totalSpent: baseTotalSpent,
+          orderCount: baseOrderCount,
+          lastOrderAt: row.lastorderat ? new Date(row.lastorderat) : undefined,
         },
         create: {
           name: row.name,
           email: row.email,
           phone: row.phone || undefined,
           city: row.city || undefined,
-          totalSpent: parseFloat(row.totalspent || "0") || 0,
-          orderCount: parseInt(row.ordercount || "0", 10) || 0,
+          totalSpent: baseTotalSpent,
+          orderCount: baseOrderCount,
+          lastOrderAt: row.lastorderat ? new Date(row.lastorderat) : undefined,
         },
       });
+
+      if (orderAmount > 0) {
+        await prisma.order.create({
+          data: {
+            customerId: customer.id,
+            amount: orderAmount,
+            createdAt: Number.isNaN(orderDate.getTime()) ? new Date() : orderDate,
+            items: row.items ? row.items.split("|").map((name) => ({ name: name.trim(), qty: 1 })) : [],
+            channel: row.channel || "import",
+            status: row.status || "completed",
+          },
+        });
+
+        await prisma.customer.update({
+          where: { id: customer.id },
+          data: {
+            totalSpent: { increment: orderAmount },
+            orderCount: { increment: 1 },
+            lastOrderAt: Number.isNaN(orderDate.getTime()) ? new Date() : orderDate,
+          },
+        });
+
+        ordersCreated++;
+      }
+
       created++;
     } catch {
       skipped++;
     }
   }
 
-  return NextResponse.json({ ok: true, created, skipped });
+  return NextResponse.json({ ok: true, created, skipped, ordersCreated });
 }
