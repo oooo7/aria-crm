@@ -129,7 +129,7 @@ export default function SegmentsPage() {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-          {segments.map((s, i) => {
+          {Array.from(new Map(segments.map(s => [s.id, s])).values()).map((s, i) => {
             const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
             return (
               <motion.div

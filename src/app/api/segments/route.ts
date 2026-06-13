@@ -67,6 +67,19 @@ export async function POST(req: NextRequest) {
   const count = await prisma.customer.count({
     where: buildWhere(filterRules as Record<string, unknown>),
   });
+
+  const existing = await prisma.segment.findFirst({
+    where: { name },
+  });
+
+  if (existing) {
+    const updated = await prisma.segment.update({
+      where: { id: existing.id },
+      data: { description, filterRules, aiGenerated: !!aiGenerated, prompt, count },
+    });
+    return NextResponse.json(updated, { status: 200 });
+  }
+
   const segment = await prisma.segment.create({
     data: { name, description, filterRules, aiGenerated: !!aiGenerated, prompt, count },
   });

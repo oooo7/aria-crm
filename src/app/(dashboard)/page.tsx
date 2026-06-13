@@ -50,10 +50,9 @@ const statusColor: Record<string, string> = {
 function money(v: number) { return `₹${Math.round(v).toLocaleString("en-IN")}`; }
 function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning";
-  if (h < 17) return "Good afternoon";
-  if (h < 21) return "Good evening";
-  return "Good night";
+  if (h >= 5 && h < 12) return "Good morning, ARIA has a revenue plan. ☀️";
+  if (h >= 12 && h < 16) return "Good afternoon, ARIA has a revenue plan. 📊";
+  return "Good evening, ARIA has a revenue plan. 🎯";
 }
 
 function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string }) {
@@ -261,6 +260,7 @@ export default function MissionControl() {
   const [goal, setGoal] = useState("Increase revenue by 15% without over-discounting");
   const [planning, setPlanning] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [greeting, setGreeting] = useState("Good evening, ARIA has a revenue plan. 🎯");
   const [plan, setPlan] = useState<null | {
     confidence: number; predictedReach: number; predictedConversions: number;
     predictedRevenue: number; predictedROI: string; strategy: string;
@@ -271,7 +271,11 @@ export default function MissionControl() {
     fetch("/api/ai/mission").then(r => r.json()).then(setMission);
   }
 
-  useEffect(() => { loadMission(); }, []);
+  useEffect(() => {
+    loadMission();
+    setGreeting(getGreeting());
+  }, []);
+
 
   async function buildPlan() {
     setPlanning(true); setPlan(null);
@@ -320,7 +324,7 @@ export default function MissionControl() {
             </span>
           </div>
           <h1 style={{ fontSize: 32, lineHeight: 1.08, fontWeight: 900, color: "#fff", margin: "0 0 9px" }}>
-            {getGreeting()}. ARIA has a revenue plan.
+            {greeting}
           </h1>
           <p style={{ color: "rgba(255,255,255,0.42)", fontSize: 13.5, maxWidth: 680, lineHeight: 1.65, margin: 0 }}>{mission.executiveSummary}</p>
         </div>
