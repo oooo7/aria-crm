@@ -7,9 +7,21 @@
 
 ## What is ARIA?
 
-**ARIA** (Automated Revenue Intelligence Agent) is a full-stack, AI-native CRM platform purpose-built for D2C retail brands. It combines customer lifecycle analytics, multi-channel campaign orchestration, and a generative AI growth agent — all in one cohesive product.
+ARIA (Automated Revenue Intelligence Agent) is a full-stack, AI-native CRM platform purpose-built for D2C retail brands. It combines customer lifecycle analytics, multi-channel campaign orchestration, and a generative AI growth agent — all in one cohesive product.
 
-The platform is designed around a single idea: **marketing managers should describe what they want in plain English, and the system should handle everything else** — segmentation, message creation, channel selection, delivery, and analytics.
+The platform is designed around a single idea: marketing managers should describe what they want in plain English, and the system should handle everything else** — segmentation, message creation, channel selection, delivery, and analytics.
+
+---
+
+## Highlights
+
+- 🤖 AI-native campaign orchestration
+- 🔄 Separate channel delivery microservice with callback architecture
+- 📊 Live funnel analytics and campaign intelligence
+- 👥 Customer lifecycle intelligence with churn prediction
+- 🛡️ Gemini-powered Growth Agent with resilient fallback architecture
+- ⚡ Real-time delivery simulation and engagement tracking
+
 
 ---
 
