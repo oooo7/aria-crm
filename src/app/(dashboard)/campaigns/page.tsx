@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   Megaphone, Plus, ArrowRight, Loader2, Sparkles,
   CheckCircle, Clock, Send, XCircle, Users, Filter, Brain,
-  MoreVertical, Trash2,
+  MoreVertical, Trash2, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "@/components/ui/toast";
@@ -134,9 +134,10 @@ const STATUS: Record<string, { color: string; bg: string; border: string; icon: 
   SENDING: { color: "#38bdf8", bg: "rgba(56,189,248,0.1)",   border: "rgba(56,189,248,0.25)",   icon: Send,        label: "Sending" },
   DRAFT:   { color: "rgba(255,255,255,0.35)", bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.1)", icon: Clock, label: "Draft" },
   FAILED:  { color: "#f87171", bg: "rgba(248,113,113,0.1)",  border: "rgba(248,113,113,0.25)",  icon: XCircle,     label: "Failed" },
+  PAUSED:  { color: "#fb923c", bg: "rgba(251,146,60,0.1)",   border: "rgba(251,146,60,0.25)",   icon: AlertTriangle, label: "Paused" },
 };
 
-type StatusFilter = "all" | "SENT" | "SENDING" | "DRAFT";
+type StatusFilter = "all" | "SENT" | "SENDING" | "DRAFT" | "PAUSED";
 
 function timeAgo(iso: string) {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -225,11 +226,12 @@ export default function CampaignsPage() {
       </div>
 
       {/* Summary stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 }}>
         {[
           { label: "All",     id: "all",     count: campaigns.length,     color: "#a78bfa", icon: Filter },
           { label: "Sent",    id: "SENT",    count: statusCounts.SENT || 0, color: "#34d399", icon: CheckCircle },
           { label: "Sending", id: "SENDING", count: statusCounts.SENDING || 0, color: "#38bdf8", icon: Send },
+          { label: "Paused",  id: "PAUSED",  count: statusCounts.PAUSED || 0,  color: "#fb923c", icon: AlertTriangle },
           { label: "Drafts",  id: "DRAFT",   count: statusCounts.DRAFT || 0,   color: "rgba(255,255,255,0.5)", icon: Clock },
         ].map(({ label, id, count, color, icon: Icon }) => {
           const active = statusFilter === id;
@@ -271,52 +273,110 @@ export default function CampaignsPage() {
             const ch  = CH[c.channel] || CH.EMAIL;
             const st  = STATUS[c.status] || STATUS.DRAFT;
             const StIcon = st.icon;
+            // Simulated delivery progress for SENDING/SENT campaigns
+            const deliveryPct = c.status === "SENT" ? 100 : c.status === "SENDING" ? Math.floor(30 + (i * 17) % 60) : 0;
             return (
               <motion.div key={c.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} style={{ position: "relative" }}>
-                <Link href={`/campaigns/${c.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, background: "rgba(10,10,22,0.9)", border: "1px solid rgba(255,255,255,0.065)", borderRadius: 14, padding: "14px 54px 14px 18px", textDecoration: "none", transition: "all 0.12s" }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(124,58,237,0.25)"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(10,10,22,0.9)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.065)"; }}
+                <div style={{
+                  background: "rgba(10,10,22,0.9)",
+                  border: "1px solid rgba(255,255,255,0.065)",
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(124,58,237,0.25)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(10,10,22,0.9)"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.065)"; }}
                 >
-                  {/* Channel icon */}
-                  <div style={{ width: 38, height: 38, borderRadius: 11, background: ch.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: ch.color, flexShrink: 0 }}>
-                    {c.channel[0]}
-                  </div>
+                  {/* Delivery progress bar */}
+                  {(c.status === "SENDING" || c.status === "SENT") && (
+                    <div style={{ height: 2, background: "rgba(255,255,255,0.04)" }}>
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${deliveryPct}%` }}
+                        transition={{ duration: 1.2, ease: "easeOut", delay: i * 0.05 }}
+                        style={{
+                          height: "100%",
+                          background: c.status === "SENT"
+                            ? "linear-gradient(90deg, #34d399, #0891b2)"
+                            : "linear-gradient(90deg, #38bdf8, #a78bfa)",
+                          animation: c.status === "SENDING" ? "sending-pulse 2s ease-in-out infinite" : "none",
+                        }}
+                      />
+                    </div>
+                  )}
 
-                  {/* Name + meta */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
-                      {c.aiGenerated && (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 8, fontWeight: 800, background: "rgba(124,58,237,0.18)", color: "#a78bfa", padding: "2px 6px", borderRadius: 4, letterSpacing: 0.7, textTransform: "uppercase", border: "1px solid rgba(124,58,237,0.28)", flexShrink: 0 }}>
-                          <Brain size={7} /> AI
+                  <Link href={`/campaigns/${c.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "14px 54px 14px 18px", textDecoration: "none" }}>
+                    {/* Channel icon */}
+                    <div style={{ width: 38, height: 38, borderRadius: 11, background: ch.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: ch.color, flexShrink: 0 }}>
+                      {c.channel[0]}
+                    </div>
+
+                    {/* Name + meta */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                        {c.aiGenerated && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 8, fontWeight: 800, background: "rgba(124,58,237,0.18)", color: "#a78bfa", padding: "2px 6px", borderRadius: 4, letterSpacing: 0.7, textTransform: "uppercase", border: "1px solid rgba(124,58,237,0.28)", flexShrink: 0 }}>
+                            <Brain size={7} /> AI
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>
+                        {c.segment?.name || "All customers"} · <span style={{ color: ch.color }}>{ch.label}</span> · {timeAgo(c.sentAt || c.createdAt)}
+                        {(c.status === "SENDING" || c.status === "SENT") && (
+                          <span style={{ color: st.color, marginLeft: 8, fontSize: 10 }}>
+                            · {deliveryPct}% delivered
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Recipients */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                      <Users size={12} color="rgba(255,255,255,0.25)" />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.55)" }}>{c._count.recipients.toLocaleString()}</span>
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.22)" }}>recipients</span>
+                    </div>
+
+                    {/* Status badge */}
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: st.bg, border: `1px solid ${st.border}`, color: st.color, fontSize: 10, fontWeight: 800, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
+                      <StIcon size={10} />
+                      {c.status === "SENDING" ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          {st.label}
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#38bdf8", animation: "pulse-dot 1.5s ease-in-out infinite" }} />
                         </span>
-                      )}
+                      ) : st.label}
                     </div>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.28)" }}>
-                      {c.segment?.name || "All customers"} · <span style={{ color: ch.color }}>{ch.label}</span> · {timeAgo(c.sentAt || c.createdAt)}
-                    </div>
-                  </div>
 
-                  {/* Recipients */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                    <Users size={12} color="rgba(255,255,255,0.25)" />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.55)" }}>{c._count.recipients.toLocaleString()}</span>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.22)" }}>recipients</span>
-                  </div>
+                    {/* Resend button for SENT campaigns */}
+                    {c.status === "SENT" && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          sessionStorage.setItem("aria_prefill", `Re-send the "${c.name}" campaign to fresh audiences`);
+                          window.location.href = "/command";
+                        }}
+                        title="Resend with ARIA"
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)",
+                          color: "#34d399", fontSize: 9, fontWeight: 800,
+                          padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                          whiteSpace: "nowrap", flexShrink: 0,
+                          transition: "all 0.15s",
+                        }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(52,211,153,0.14)"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "rgba(52,211,153,0.08)"}
+                      >
+                        <RefreshCw size={8} /> Resend
+                      </button>
+                    )}
 
-                  {/* Status badge */}
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: st.bg, border: `1px solid ${st.border}`, color: st.color, fontSize: 10, fontWeight: 800, padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>
-                    <StIcon size={10} />
-                    {c.status === "SENDING" ? (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        {st.label}
-                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#38bdf8", animation: "pulse-dot 1.5s ease-in-out infinite" }} />
-                      </span>
-                    ) : st.label}
-                  </div>
-
-                  <ArrowRight size={14} color="rgba(255,255,255,0.18)" style={{ flexShrink: 0, marginRight: -18 }} />
-                </Link>
+                    <ArrowRight size={14} color="rgba(255,255,255,0.18)" style={{ flexShrink: 0, marginRight: -18 }} />
+                  </Link>
+                </div>
 
                 <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", zIndex: 10 }}>
                   <CampaignRowMenu campaign={c} onDelete={setCampaignToDelete} />

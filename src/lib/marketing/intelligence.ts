@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
+
 type SegmentKey = "lapsed" | "atRisk" | "vip" | "new";
 
 const SEGMENT_META: Record<SegmentKey, {
@@ -190,7 +197,7 @@ export async function getMarketingIntelligence() {
       vip: vip.length,
       new: newlyActivated.length,
     },
-    executiveSummary: `ARIA found ₹${revenueAtRisk.toLocaleString("en-IN")} at risk and ₹${revenueOpportunity.toLocaleString("en-IN")} in near-term opportunity. The best next move is ${recommendedActions[0]?.title || "launching a focused retention play"} with ${recommendedActions[0]?.confidence || 80}% confidence.`,
+    executiveSummary: `ARIA found ${formatINR(revenueAtRisk)} at risk and ${formatINR(revenueOpportunity)} in near-term opportunity. The best next move is ${recommendedActions[0]?.title || "launching a focused retention play"} with ${recommendedActions[0]?.confidence || 80}% confidence.`,
     recommendedActions,
     recentCampaigns: campaigns.map((campaign) => ({
       id: campaign.id,

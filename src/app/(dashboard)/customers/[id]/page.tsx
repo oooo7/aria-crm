@@ -38,8 +38,14 @@ const glass = {
 const channelColor: Record<string, string> = {
   EMAIL: "#a78bfa", SMS: "#38bdf8", WHATSAPP: "#34d399", RCS: "#fb923c",
 };
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
 
-function money(v: number) { return `₹${Math.round(v).toLocaleString("en-IN")}`; }
+function money(v: number) { return formatINR(Math.round(v)); }
 
 function daysAgo(iso: string | null) {
   if (!iso) return "No order";
@@ -188,7 +194,9 @@ export default function Customer360Page({ params }: { params: Promise<{ id: stri
               sessionStorage.setItem("aria_prefill", intelligence.recommendedAction);
               window.location.href = "/command";
             }}
-            style={{ display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg, #7c3aed, #0891b2)", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, padding: "12px 18px", borderRadius: 13, cursor: "pointer", boxShadow: "0 8px 24px rgba(124,58,237,0.28)" }}
+            style={{ display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg, #7c3aed, #0891b2)", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, padding: "12px 18px", borderRadius: 13, cursor: "pointer", boxShadow: "0 8px 24px rgba(124,58,237,0.28)", transition: "opacity 0.15s" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = "0.88"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = "1"}
           >
             <Zap size={14} /> Launch campaign <ArrowRight size={13} />
           </button>

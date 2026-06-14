@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
+
 function daysBetween(date: Date | null) {
   if (!date) return null;
   return Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
@@ -58,7 +65,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           ? "Drive second purchase with a personalized welcome offer."
           : "Keep warm with new arrivals and light personalization.";
 
-  const aiSummary = `${customer.name} is a ${stage.toLowerCase()} shopper from ${customer.city || "an unknown city"} with ₹${Math.round(customer.totalSpent).toLocaleString("en-IN")} lifetime value across ${customer.orderCount} orders. ${days === null ? "ARIA has no recent order timestamp." : `Last order was ${days} days ago.`} Preferred channel is ${channel}.`;
+  const aiSummary = `${customer.name} is a ${stage.toLowerCase()} shopper from ${customer.city || "an unknown city"} with ${formatINR(Math.round(customer.totalSpent))} lifetime value across ${customer.orderCount} orders. ${days === null ? "ARIA has no recent order timestamp." : `Last order was ${days} days ago.`} Preferred channel is ${channel}.`;
 
   return NextResponse.json({
     customer,

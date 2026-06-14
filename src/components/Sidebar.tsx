@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -37,6 +38,53 @@ export default function Sidebar() {
     if (href === "/") return path === "/";
     return path.startsWith(href);
   };
+
+  // Keyboard navigation shortcuts (G H, G A, G C, etc.)
+  useEffect(() => {
+    let lastKey = "";
+    let lastKeyTime = 0;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in input fields
+      const target = e.target as HTMLElement;
+      if (
+        !target ||
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      const key = e.key.toLowerCase();
+      const now = Date.now();
+
+      if (lastKey === "g" && now - lastKeyTime < 1000) {
+        let dest = "";
+        switch (key) {
+          case "h": dest = "/"; break;
+          case "a": dest = "/command"; break;
+          case "c": dest = "/customers"; break;
+          case "s": dest = "/segments"; break;
+          case "p": dest = "/campaigns"; break;
+          case "n": dest = "/analytics"; break;
+        }
+        if (dest) {
+          e.preventDefault();
+          window.location.href = dest;
+        }
+        lastKey = "";
+      } else if (key === "g") {
+        lastKey = "g";
+        lastKeyTime = now;
+      } else {
+        lastKey = "";
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   return (
     <aside style={{
@@ -202,8 +250,30 @@ export default function Sidebar() {
           <div style={{ fontSize: 9, color: "rgba(255,255,255,0.25)", letterSpacing: 0.4 }}>
             AI-native marketing workspace
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+            <Sparkles size={9} color="#a78bfa" />
+            <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Built with Gemini AI</span>
+          </div>
+        </div>
+
+        {/* Cmd+K hint */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          marginTop: 8, padding: "6px 10px",
+          background: "rgba(255,255,255,0.02)",
+          border: "1px solid rgba(255,255,255,0.05)",
+          borderRadius: 7, cursor: "pointer",
+        }}
+        onClick={() => {
+          const event = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
+          window.dispatchEvent(event);
+        }}
+        >
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontWeight: 600 }}>⌘K</span>
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.18)" }}>Quick commands</span>
         </div>
       </div>
     </aside>
   );
 }
+

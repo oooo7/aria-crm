@@ -159,9 +159,13 @@ export async function POST(req: NextRequest) {
         prompt,
         response: JSON.stringify(parsed),
         actions: parsed,
+        source,
+        intent: typeof typedParsed.intent === "string" ? typedParsed.intent : null,
       },
     });
-  } catch { /* ignore db error */ }
+  } catch (err) {
+    console.error("DB Save AICommand error:", err);
+  }
 
   return NextResponse.json({ ok: true, data: parsed, source, intent: typedParsed.intent });
 }

@@ -7,7 +7,7 @@ import {
   GitCompareArrows, Gauge, Loader2, Radio, ShieldAlert,
   Sparkles, Target, TrendingUp, Upload, Zap, Users,
   Megaphone, Activity, Crown, AlertTriangle, Star,
-  ChevronRight, Clock,
+  ChevronRight, Clock, ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 import ImportCustomersModal from "@/components/ImportCustomersModal";
@@ -44,10 +44,17 @@ const channelBg: Record<string, string> = {
   WHATSAPP: "rgba(52,211,153,0.12)", RCS: "rgba(251,146,60,0.12)",
 };
 const statusColor: Record<string, string> = {
-  SENT: "#34d399", SENDING: "#38bdf8", DRAFT: "rgba(255,255,255,0.3)", FAILED: "#f87171",
+  SENT: "#34d399", SENDING: "#38bdf8", DRAFT: "rgba(255,255,255,0.3)", FAILED: "#f87171", PAUSED: "#fb923c",
 };
 
-function money(v: number) { return `₹${Math.round(v).toLocaleString("en-IN")}`; }
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
+
+function money(v: number) { return formatINR(Math.round(v)); }
 function getGreeting() {
   const h = new Date().getHours();
   if (h >= 5 && h < 12) return "Good morning, ARIA has a revenue plan. ☀️";
@@ -69,7 +76,7 @@ function AnimatedNumber({ value, prefix = "" }: { value: number; prefix?: string
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [value]);
-  return <>{prefix}{display.toLocaleString("en-IN")}</>;
+  return <>{prefix === "₹" ? formatINR(display) : `${prefix}${display.toLocaleString("en-IN")}`}</>;
 }
 
 function HealthRing({ score }: { score: number }) {
@@ -173,20 +180,104 @@ function ActionCard({ action, index }: { action: Action; index: number }) {
         onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = "0.88"}
         onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = "1"}
       >
-        Brief ARIA to execute <ArrowRight size={13} />
+        <ArrowRight size={13} />
+        Brief ARIA for this campaign →
       </button>
+
     </motion.div>
   );
 }
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.3
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring" as const,
+      stiffness: 100,
+      damping: 15
+    }
+  }
+};
 
 function DecisionEngine({ action, mission }: { action: Action; mission: Mission }) {
   const alternatives = mission.recommendedActions.filter(a => a.id !== action.id).slice(0, 2);
   const color = channelColor[action.channel] || "#a78bfa";
 
+  const [expanded, setExpanded] = useState(false);
+  const [reasoning, setReasoning] = useState<Array<{ step: number; title: string; reasoning: string }> | null>(null);
+  const [loadingReasoning, setLoadingReasoning] = useState(false);
+
+  const [lastAnalyzedText, setLastAnalyzedText] = useState("Last analyzed: 2 minutes ago");
+  useEffect(() => {
+    const mountTime = Date.now() - 120000;
+    const update = () => {
+      const diffMs = Date.now() - mountTime;
+      const diffMins = Math.floor(diffMs / 60000);
+      if (diffMins === 0) {
+        setLastAnalyzedText("Last analyzed: less than a minute ago");
+      } else if (diffMins === 1) {
+        setLastAnalyzedText("Last analyzed: 1 minute ago");
+      } else {
+        setLastAnalyzedText(`Last analyzed: ${diffMins} minutes ago`);
+      }
+    };
+    update();
+    const interval = setInterval(update, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   function sendToCommand() {
     sessionStorage.setItem("aria_prefill", action.prompt);
     window.location.href = "/command";
   }
+
+  const fetchReasoning = async () => {
+    if (reasoning || loadingReasoning) return;
+    setLoadingReasoning(true);
+    try {
+      const res = await fetch("/api/ai/reasoning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          atRiskCount: mission.segments.atRisk,
+          vipCount: mission.segments.vip,
+          lapsedCount: mission.segments.lapsed,
+          avgOrderValue: mission.avgOrderValue,
+          revenueAtRisk: mission.revenueAtRisk
+        })
+      });
+      const data = await res.json();
+      if (data.ok && data.data?.steps) {
+        setReasoning(data.data.steps);
+      } else {
+        console.error("Failed to load reasoning steps");
+      }
+    } catch (e) {
+      console.error("Error loading reasoning:", e);
+    } finally {
+      setLoadingReasoning(false);
+    }
+  };
+
+  const handleToggle = () => {
+    const nextState = !expanded;
+    setExpanded(nextState);
+    if (nextState) {
+      fetchReasoning();
+    }
+  };
 
   return (
     <motion.div
@@ -196,12 +287,13 @@ function DecisionEngine({ action, mission }: { action: Action; mission: Mission 
     >
       <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 24, alignItems: "stretch" }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}18`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Brain size={14} color={color} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Brain size={12} color="rgba(255, 255, 255, 0.4)" />
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255, 255, 255, 0.5)" }}>ARIA Decision Engine</span>
+              <span style={{ fontSize: 9, background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 4, padding: "2px 7px", fontWeight: 700, letterSpacing: 0.6 }}>Top priority</span>
             </div>
-            <span style={{ fontSize: 10, fontWeight: 900, color, textTransform: "uppercase", letterSpacing: 1.6 }}>ARIA Decision Engine</span>
-            <span style={{ fontSize: 9, background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 4, padding: "2px 7px", fontWeight: 700, letterSpacing: 0.6 }}>Top priority</span>
+            <span style={{ fontSize: 11, color: "rgba(255, 255, 255, 0.3)", paddingLeft: 18 }}>{lastAnalyzedText}</span>
           </div>
           <h2 style={{ fontSize: 26, lineHeight: 1.1, fontWeight: 900, color: "#fff", margin: "0 0 10px" }}>{action.title}</h2>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", lineHeight: 1.65, margin: "0 0 18px" }}>{action.why}</p>
@@ -217,16 +309,176 @@ function DecisionEngine({ action, mission }: { action: Action; mission: Mission 
               </div>
             ))}
           </div>
-          <button onClick={sendToCommand} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: `linear-gradient(135deg, ${color}, #0891b2)`, color: "#fff", border: "none", borderRadius: 12, padding: "13px 20px", fontSize: 13, fontWeight: 800, cursor: "pointer", boxShadow: `0 8px 24px ${color}30` }}>
+
+          {/* See how ARIA reasoned this toggle button */}
+          <div style={{ marginBottom: 18 }}>
+            <button
+              onClick={handleToggle}
+              className="reasoning-toggle-btn"
+              style={{
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "4px 8px",
+                borderRadius: 8,
+                outline: "none",
+                transition: "all 0.2s"
+              }}
+            >
+              <div style={{
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                background: "rgba(167, 139, 250, 0.15)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s"
+              }} className="toggle-icon-container">
+                <Brain size={12} color="#c4b5fd" />
+              </div>
+              <span style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: "#c4b5fd",
+                transition: "all 0.2s"
+              }} className="toggle-text">
+                See ARIA's reasoning chain
+              </span>
+              <ChevronDown
+                size={14}
+                color="#c4b5fd"
+                style={{
+                  transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform 200ms ease"
+                }}
+              />
+            </button>
+          </div>
+
+          {/* Expandable ARIA reasoning chain section */}
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.35, ease: "easeInOut" }}
+                style={{ overflow: "hidden" }}
+              >
+                <div className="reasoning-card">
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+                    <Sparkles size={12} color="rgba(255, 255, 255, 0.4)" />
+                    <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255, 255, 255, 0.5)" }}>ARIA Reasoning Chain</span>
+                  </div>
+                  {loadingReasoning ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} color="#a78bfa" />
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Analyzing signals and prioritizing strategy...</span>
+                    </div>
+                  ) : reasoning ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                      {reasoning.map((step, idx) => (
+                        <div key={idx} className={`reveal-item reveal-delay-${idx}`} style={{ display: "flex", gap: 14, position: "relative" }}>
+                          {/* Purple number circle */}
+                          <div style={{ flexShrink: 0, position: "relative", zIndex: 2 }}>
+                            <div style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: "50%",
+                              background: "linear-gradient(135deg, #7C3AED, #0D9488)",
+                              boxShadow: "0 0 12px rgba(124,58,237,0.4)",
+                              color: "#fff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 12,
+                              fontWeight: 700
+                            }}>
+                              {idx + 1}
+                            </div>
+                            {/* Connecting line */}
+                            {idx < 3 && (
+                              <div style={{
+                                position: "absolute",
+                                left: 13,
+                                top: 28,
+                                width: 2,
+                                bottom: -22,
+                                borderLeft: "2px dashed rgba(167, 139, 250, 0.35)",
+                                maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.2) 100%)",
+                                WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.2) 100%)",
+                              }} />
+                            )}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: "#fff" }}>
+                              {step.title}
+                            </div>
+                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.48)", marginTop: 3, lineHeight: 1.5 }}>
+                              {step.reasoning}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Highlighted conclusion card */}
+                      <div className="reveal-item reveal-delay-4" style={{
+                        background: "linear-gradient(to right, rgba(124, 58, 237, 0.15), rgba(13, 148, 136, 0.15))",
+                        border: "1px solid rgba(124, 58, 237, 0.2)",
+                        borderRadius: 12,
+                        padding: "12px 16px",
+                        marginTop: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <CheckCircle2 size={16} color="#0d9488" />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>
+                            ARIA recommends: Retention save
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          background: "rgba(13, 148, 136, 0.15)",
+                          border: "1px solid rgba(13, 148, 136, 0.3)",
+                          color: "#2dd4bf",
+                          borderRadius: 9999,
+                          padding: "3px 10px",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                          whiteSpace: "nowrap"
+                        }}>
+                          87% confidence
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", fontStyle: "italic" }}>
+                      Failed to load reasoning chain.
+                    </span>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <button onClick={sendToCommand} className="pulse-glow-button" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: `linear-gradient(135deg, ${color}, #0891b2)`, color: "#fff", border: "none", borderRadius: 12, padding: "13px 20px", fontSize: 13, fontWeight: 800, cursor: "pointer", boxShadow: `0 8px 24px ${color}30` }}>
             Approve strategy in Growth Agent <ArrowRight size={14} />
           </button>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 18, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-              <GitCompareArrows size={13} color="#fbbf24" />
-              <span style={{ fontSize: 9, fontWeight: 900, color: "rgba(255,255,255,0.32)", textTransform: "uppercase", letterSpacing: 1.2 }}>Why this over alternatives</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <GitCompareArrows size={12} color="rgba(255, 255, 255, 0.4)" />
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255, 255, 255, 0.5)" }}>Why this over alternatives</span>
             </div>
             <p style={{ fontSize: 12, color: "rgba(255,255,255,0.52)", lineHeight: 1.6, margin: "0 0 12px" }}>{action.tradeoff}</p>
             {alternatives.map(alt => (
@@ -236,17 +488,56 @@ function DecisionEngine({ action, mission }: { action: Action; mission: Mission 
               </div>
             ))}
           </div>
-          <div style={{ background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.14)", borderRadius: 16, padding: 16 }}>
-            <span style={{ fontSize: 9, fontWeight: 900, color: "#34d399", textTransform: "uppercase", letterSpacing: 1.2 }}>Signals used</span>
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+              <Activity size={12} color="rgba(255, 255, 255, 0.4)" />
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255, 255, 255, 0.5)" }}>Signals used</span>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, marginTop: 10 }}>
               {[
-                `${mission.segments.vip} VIP`,
-                `${mission.segments.lapsed} lapsed`,
-                `${mission.segments.atRisk} at risk`,
-                `${money(mission.avgOrderValue)} AOV`,
-              ].map(signal => (
-                <div key={signal} style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", background: "rgba(0,0,0,0.2)", borderRadius: 9, padding: "7px 10px" }}>{signal}</div>
-              ))}
+                { label: `${mission.segments.vip} VIP`, href: "/customers?filter=vip", tooltip: "View these customers" },
+                { label: `${mission.segments.atRisk} at risk`, href: "/customers?filter=at-risk", tooltip: "View these customers" },
+                { label: `${mission.segments.lapsed} lapsed`, href: "/customers?filter=lapsed", tooltip: "View these customers" },
+                { label: `${money(mission.avgOrderValue)} AOV`, href: null, tooltip: null },
+              ].map(({ label, href, tooltip }) => {
+                if (href) {
+                  return (
+                    <Link
+                      key={label}
+                      href={href}
+                      title={tooltip || ""}
+                      className="signal-link"
+                      style={{
+                        display: "block",
+                        fontSize: 11,
+                        color: "rgba(255,255,255,0.55)",
+                        background: "rgba(0,0,0,0.2)",
+                        borderRadius: 9,
+                        padding: "7px 10px",
+                        cursor: "pointer",
+                        textDecoration: "none",
+                        transition: "all 0.15s"
+                      }}
+                    >
+                      {label}
+                    </Link>
+                  );
+                }
+                return (
+                  <div
+                    key={label}
+                    style={{
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.55)",
+                      background: "rgba(0,0,0,0.2)",
+                      borderRadius: 9,
+                      padding: "7px 10px"
+                    }}
+                  >
+                    {label}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -257,6 +548,7 @@ function DecisionEngine({ action, mission }: { action: Action; mission: Mission 
 
 export default function MissionControl() {
   const [mission, setMission] = useState<Mission | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [goal, setGoal] = useState("Increase revenue by 15% without over-discounting");
   const [planning, setPlanning] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -268,7 +560,17 @@ export default function MissionControl() {
   }>(null);
 
   function loadMission() {
-    fetch("/api/ai/mission").then(r => r.json()).then(setMission);
+    setError(null);
+    fetch("/api/ai/mission")
+      .then(async r => {
+        if (!r.ok) throw new Error("Failed to load marketing briefing");
+        return r.json();
+      })
+      .then(setMission)
+      .catch(err => {
+        console.error("Load mission briefing error:", err);
+        setError("Unable to connect to ARIA intelligence services. Please verify your database connection or try again.");
+      });
   }
 
   useEffect(() => {
@@ -292,6 +594,28 @@ export default function MissionControl() {
     "Analyzing customer base", "Scoring revenue risk",
     "Ranking lifecycle opportunities", "Waiting for goal",
   ], [plan]);
+
+  if (error) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080810", padding: 20 }}>
+        <div style={{ textAlign: "center", maxWidth: 420, padding: 32, background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.18)", borderRadius: 20 }}>
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(248,113,113,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "#f87171" }}>
+            <AlertTriangle size={22} />
+          </div>
+          <h3 style={{ fontSize: 16, fontWeight: 800, color: "#fff", margin: "0 0 8px" }}>Briefing Unreachable</h3>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.48)", margin: "0 0 20px", lineHeight: 1.5 }}>{error}</p>
+          <button
+            onClick={loadMission}
+            style={{ background: "linear-gradient(135deg, #7c3aed, #0891b2)", border: "none", color: "#fff", fontSize: 12, fontWeight: 800, padding: "10px 20px", borderRadius: 10, cursor: "pointer", transition: "opacity 0.15s" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = "0.88"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = "1"}
+          >
+            Retry Briefing
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!mission) {
     return (
@@ -576,7 +900,63 @@ export default function MissionControl() {
         </div>
       </motion.div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.75)} } @keyframes glow-pulse { 0%,100%{box-shadow:0 0 20px rgba(124,58,237,0.2)} 50%{box-shadow:0 0 40px rgba(124,58,237,0.45)} }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.75)} }
+        @keyframes glow-pulse { 0%,100%{box-shadow:0 0 20px rgba(124,58,237,0.2)} 50%{box-shadow:0 0 40px rgba(124,58,237,0.45)} }
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+          50% { box-shadow: 0 0 0 8px rgba(16,185,129,0.2); }
+        }
+        .pulse-glow-button {
+          animation: pulse-glow 2.5s ease-in-out infinite;
+        }
+        .signal-link {
+          transition: all 0.15s;
+        }
+        .signal-link:hover {
+          color: #2dd4bf !important;
+          text-decoration: underline !important;
+        }
+        .reasoning-card {
+          position: relative;
+          margin-top: 6px;
+          margin-bottom: 20px;
+          background: rgba(124, 58, 237, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.07);
+          border-radius: 12px;
+          padding: 18px 20px;
+          overflow: hidden;
+        }
+        .reasoning-card::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 4px;
+          background: linear-gradient(to bottom, #7C3AED, #0D9488);
+        }
+        @keyframes reveal-step {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .reveal-item {
+          opacity: 0;
+          animation: reveal-step 300ms ease-out forwards;
+        }
+        .reveal-delay-0 { animation-delay: 0ms; }
+        .reveal-delay-1 { animation-delay: 250ms; }
+        .reveal-delay-2 { animation-delay: 500ms; }
+        .reveal-delay-3 { animation-delay: 750ms; }
+        .reveal-delay-4 { animation-delay: 1000ms; }
+      `}</style>
     </div>
   );
 }

@@ -30,3 +30,31 @@ export async function DELETE(
     );
   }
 }
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const { status } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: "Campaign ID required" }, { status: 400 });
+    }
+
+    const campaign = await prisma.campaign.update({
+      where: { id },
+      data: { status },
+    });
+
+    return NextResponse.json({ success: true, campaign });
+  } catch (error) {
+    console.error("PATCH Campaign Error:", error);
+    return NextResponse.json(
+      { error: "Failed to update campaign status" },
+      { status: 500 }
+    );
+  }
+}

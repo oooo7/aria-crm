@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getMarketingIntelligence } from "@/lib/marketing/intelligence";
 
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
+
 export async function GET() {
   try {
     const [intel, topCustomers, revenueSum] = await Promise.all([
@@ -34,8 +41,8 @@ export async function GET() {
       totalCampaigns: intel.totalSent,
       avgOpenRate,
       avgConversionRate,
-      totalRevenue: `₹${Math.round(totalRevenue).toLocaleString("en-IN")}`,
-      revenueAtRisk: `₹${intel.revenueAtRisk.toLocaleString("en-IN")}`,
+      totalRevenue: formatINR(Math.round(totalRevenue)),
+      revenueAtRisk: formatINR(intel.revenueAtRisk),
       recentCampaigns: intel.recentCampaigns.slice(0, 5).map(c => ({
         name: c.name,
         status: c.status,
@@ -45,7 +52,7 @@ export async function GET() {
       topCustomers: topCustomers.map(c => ({
         name: c.name,
         city: c.city || "Unknown",
-        spent: `₹${Math.round(c.totalSpent).toLocaleString("en-IN")}`,
+        spent: formatINR(Math.round(c.totalSpent)),
         stage: c.totalSpent >= 20000 ? "VIP" : c.tags.includes("new") ? "New" : "Active"
       }))
     };

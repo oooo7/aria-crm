@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Target, Sparkles, Plus, Loader2, Users, Zap, BarChart3, Brain } from "lucide-react";
+import { ArrowRight, Target, Sparkles, Plus, Loader2, Users, Zap, BarChart3, Brain, Search } from "lucide-react";
 import Link from "next/link";
 
 interface Segment {
@@ -13,6 +13,13 @@ interface Segment {
   _count: { campaigns: number };
 }
 
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
+
 function FilterBadges({ rules }: { rules: Record<string, unknown> }) {
   const badges: string[] = [];
   if (rules.lastOrderDaysAgo) {
@@ -22,7 +29,7 @@ function FilterBadges({ rules }: { rules: Record<string, unknown> }) {
   }
   if (rules.totalSpent) {
     const v = rules.totalSpent as Record<string, number>;
-    if (v.gte) badges.push(`Spent ≥ ₹${v.gte.toLocaleString()}`);
+    if (v.gte) badges.push(`Spent ≥ ${formatINR(v.gte)}`);
   }
   if (rules.orderCount) {
     const v = rules.orderCount as Record<string, number>;
@@ -68,6 +75,7 @@ export default function SegmentsPage() {
   const [segments, setSegments] = useState<Segment[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCustomers, setTotalCustomers] = useState(200);
+  const [segmentSearch, setSegmentSearch] = useState("");
 
   useEffect(() => {
     fetch("/api/segments").then(r => r.json()).then(d => { setSegments(d); setLoading(false); });
@@ -103,6 +111,33 @@ export default function SegmentsPage() {
         </Link>
       </div>
 
+      {/* Segment search bar */}
+      <div style={{ position: "relative", marginBottom: 18 }}>
+        <Search size={14} color="rgba(255,255,255,0.28)" style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)" }} />
+        <input
+          value={segmentSearch}
+          onChange={e => setSegmentSearch(e.target.value)}
+          placeholder="Search segments by name..."
+          style={{
+            width: "100%", background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "#fff", fontSize: 13, borderRadius: 11,
+            padding: "10px 14px 10px 38px", outline: "none",
+            transition: "border-color 0.15s",
+          }}
+          onFocus={e => (e.target as HTMLInputElement).style.borderColor = "rgba(124,58,237,0.4)"}
+          onBlur={e => (e.target as HTMLInputElement).style.borderColor = "rgba(255,255,255,0.08)"}
+        />
+        {segmentSearch && (
+          <button
+            onClick={() => setSegmentSearch("")}
+            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "transparent", border: "none", color: "rgba(255,255,255,0.35)", cursor: "pointer", fontSize: 16, lineHeight: 1 }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+
       {/* Summary strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 11, marginBottom: 22 }}>
         {[
@@ -129,7 +164,9 @@ export default function SegmentsPage() {
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-          {Array.from(new Map(segments.map(s => [s.id, s])).values()).map((s, i) => {
+          {Array.from(new Map(segments.map(s => [s.id, s])).values())
+            .filter(s => !segmentSearch || s.name.toLowerCase().includes(segmentSearch.toLowerCase()))
+            .map((s, i) => {
             const accent = CARD_ACCENTS[i % CARD_ACCENTS.length];
             return (
               <motion.div
@@ -197,7 +234,7 @@ export default function SegmentsPage() {
                             </div>
                             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.52)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
                           </div>
-                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", whiteSpace: "nowrap" }}>{c.city || "—"} · ₹{c.totalSpent.toLocaleString()}</span>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", whiteSpace: "nowrap" }}>{c.city || "—"} · {formatINR(c.totalSpent)}</span>
                         </div>
                       ))}
                     </div>
@@ -214,6 +251,33 @@ export default function SegmentsPage() {
                   </div>
                 )}
 
+                {/* Segment health score */}
+                {(() => {
+                  const coverage = totalCustomers > 0 ? (s.audienceCount / totalCustomers) * 100 : 0;
+                  const engagement = s._count.campaigns > 0 ? Math.min(s._count.campaigns * 12, 60) : 0;
+                  const healthScore = Math.min(Math.round(coverage * 0.4 + engagement + (s.aiGenerated ? 10 : 0)), 100);
+                  const healthColor = healthScore >= 70 ? "#34d399" : healthScore >= 40 ? "#f59e0b" : "#f87171";
+                  const healthLabel = healthScore >= 70 ? "Healthy" : healthScore >= 40 ? "Moderate" : "Low engagement";
+                  return (
+                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.28)", textTransform: "uppercase", letterSpacing: 0.8 }}>Segment Health</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: healthColor }}>{healthScore}/100 · {healthLabel}</span>
+                        </div>
+                        <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${healthScore}%` }}
+                            transition={{ duration: 1.1, ease: "easeOut", delay: 0.2 }}
+                            style={{ height: "100%", background: `linear-gradient(90deg, ${healthColor}, ${healthColor}88)`, borderRadius: 4 }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Footer meta */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                   <span style={{ fontSize: 10, color: "rgba(255,255,255,0.22)" }}>
@@ -224,6 +288,7 @@ export default function SegmentsPage() {
                     <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{s._count.campaigns} campaign{s._count.campaigns !== 1 ? "s" : ""}</span>
                   </div>
                 </div>
+
 
                 {/* CTA */}
                 <button

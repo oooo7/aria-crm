@@ -10,6 +10,13 @@ import {
 import Link from "next/link";
 import ImportCustomersModal from "@/components/ImportCustomersModal";
 
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
+
 interface Customer {
   id: string; name: string; email: string; city: string | null;
   totalSpent: number; orderCount: number; lastOrderAt: string | null;
@@ -205,7 +212,7 @@ export default function CustomersPage() {
       {/* Table */}
       <div style={{ background: "rgba(10,10,22,0.9)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 16, overflow: "hidden" }}>
         {/* Header */}
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 90px 70px 110px 90px 100px 140px 34px", padding: "10px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: 1.3 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 90px 70px 110px 90px 100px 140px 90px", padding: "10px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: 1.3 }}>
           <span>Customer</span>
           <span>City</span>
           <span style={{ textAlign: "center" }}>Orders</span>
@@ -235,72 +242,104 @@ export default function CustomersPage() {
             const StateIcon  = state.icon;
             const ChannelIcon = ch.icon;
 
+            const briefARIA = (e: React.MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const prompt = `Create a personalized ${ch.label} campaign for ${customer.name}, a ${state.label.toLowerCase()} customer from ${customer.city || "India"} with ₹${Math.round(customer.totalSpent).toLocaleString("en-IN")} lifetime spend`;
+              sessionStorage.setItem("aria_prefill", prompt);
+              window.location.href = "/command";
+            };
+
             return (
-              <Link
-                key={customer.id}
-                href={`/customers/${customer.id}`}
-                style={{
-                  display: "grid", gridTemplateColumns: "2fr 90px 70px 110px 90px 100px 140px 34px",
-                  padding: "12px 20px", alignItems: "center",
-                  borderBottom: idx < customers.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
-                  textDecoration: "none", transition: "background 0.12s", cursor: "pointer",
-                }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "transparent"}
-              >
-                {/* Customer identity */}
-                <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 10, background: avatar.bg, color: avatar.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, flexShrink: 0, letterSpacing: 0.5 }}>
-                    {initials(customer.name)}
+              <div key={customer.id} style={{ position: "relative" }}>
+                <Link
+                  href={`/customers/${customer.id}`}
+                  style={{
+                    display: "grid", gridTemplateColumns: "2fr 90px 70px 110px 90px 100px 140px 90px",
+                    padding: "12px 20px", alignItems: "center",
+                    borderBottom: idx < customers.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                    textDecoration: "none", transition: "background 0.12s", cursor: "pointer",
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)";
+                    const btn = e.currentTarget.querySelector(".brief-aria-btn") as HTMLElement | null;
+                    if (btn) btn.style.opacity = "1";
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.background = "transparent";
+                    const btn = e.currentTarget.querySelector(".brief-aria-btn") as HTMLElement | null;
+                    if (btn) btn.style.opacity = "0";
+                  }}
+                >
+                  {/* Customer identity */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: avatar.bg, color: avatar.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, flexShrink: 0, letterSpacing: 0.5 }}>
+                      {initials(customer.name)}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.name}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.22)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{customer.email}</div>
+                    </div>
                   </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.name}</div>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.22)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{customer.email}</div>
+
+                  {/* City */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    {customer.city && <MapPin size={10} color="rgba(255,255,255,0.2)" />}
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.38)" }}>{customer.city || "—"}</span>
                   </div>
-                </div>
 
-                {/* City */}
-                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  {customer.city && <MapPin size={10} color="rgba(255,255,255,0.2)" />}
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.38)" }}>{customer.city || "—"}</span>
-                </div>
+                  {/* Orders */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                    <ShoppingBag size={11} color="rgba(255,255,255,0.22)" />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.58)" }}>{customer.orderCount}</span>
+                  </div>
 
-                {/* Orders */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                  <ShoppingBag size={11} color="rgba(255,255,255,0.22)" />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.58)" }}>{customer.orderCount}</span>
-                </div>
-
-                {/* Spent */}
-                <span style={{ fontSize: 13, fontWeight: 800, color: "#34d399", textAlign: "right" }}>
-                  ₹{customer.totalSpent.toLocaleString("en-IN")}
-                </span>
-
-                {/* Last order */}
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", textAlign: "center" }}>
-                  {daysAgo(customer.lastOrderAt)}
-                </span>
-
-                {/* Lifecycle stage */}
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: state.bg, color: state.color, border: `1px solid ${state.color}26`, fontSize: 9, fontWeight: 800, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>
-                    <StateIcon size={9} /> {state.label}
+                  {/* Spent */}
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#34d399", textAlign: "right" }}>
+                    {formatINR(customer.totalSpent)}
                   </span>
-                </div>
 
-                {/* Next action + channel hint */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 18, height: 18, borderRadius: 5, background: `${ch.color}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <ChannelIcon size={9} color={ch.color} />
+                  {/* Last order */}
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", textAlign: "center" }}>
+                    {daysAgo(customer.lastOrderAt)}
+                  </span>
+
+                  {/* Lifecycle stage */}
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: state.bg, color: state.color, border: `1px solid ${state.color}26`, fontSize: 9, fontWeight: 800, padding: "3px 8px", borderRadius: 20, whiteSpace: "nowrap" }}>
+                      <StateIcon size={9} /> {state.label}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 10, color: "rgba(255,255,255,0.36)", lineHeight: 1.35, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{state.action}</span>
-                </div>
 
-                {/* Arrow */}
-                <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                  <ArrowRight size={13} color="rgba(255,255,255,0.16)" />
-                </div>
-              </Link>
+                  {/* Next action + channel hint */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 18, height: 18, borderRadius: 5, background: `${ch.color}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <ChannelIcon size={9} color={ch.color} />
+                    </div>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.36)", lineHeight: 1.35, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{state.action}</span>
+                  </div>
+
+                  {/* Brief ARIA button (hover-reveal) */}
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      className="brief-aria-btn"
+                      onClick={briefARIA}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        background: "rgba(167,139,250,0.12)",
+                        border: "1px solid rgba(167,139,250,0.25)",
+                        color: "#c4b5fd", fontSize: 9, fontWeight: 800,
+                        padding: "3px 8px", borderRadius: 6,
+                        cursor: "pointer", whiteSpace: "nowrap",
+                        opacity: 0,
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <Sparkles size={8} /> Brief ARIA
+                    </button>
+                  </div>
+                </Link>
+              </div>
             );
           })
         )}

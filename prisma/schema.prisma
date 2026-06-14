@@ -107,6 +107,8 @@ model AICommand {
   prompt    String
   response  String
   actions   Json
+  source    String?
+  intent    String?
   createdAt DateTime @default(now())
 }
 

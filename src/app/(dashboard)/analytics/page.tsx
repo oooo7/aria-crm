@@ -4,13 +4,22 @@ import { motion } from "framer-motion";
 import {
   BarChart3, Loader2, TrendingUp, Users, Megaphone, ShoppingBag,
   Sparkles, Activity, Brain, Target, CircleDollarSign, Mail,
-  MessageCircle, Phone, Zap, ChevronRight,
+  MessageCircle, Phone, Zap, ChevronRight, Download,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line, CartesianGrid, AreaChart, Area, PieChart, Pie,
 } from "recharts";
+import { toast } from "@/components/ui/toast";
+
 import Link from "next/link";
+
+const formatINR = (n: number) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0
+  }).format(n).replace(/\s+/g, "");
 
 interface Overview {
   totalCustomers: number; totalCampaigns: number; totalRevenue: number;
@@ -86,7 +95,14 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/analytics/overview").then(r => r.json()).then(d => { setData(d); setLoading(false); });
+    const load = () =>
+      fetch("/api/analytics/overview")
+        .then(r => r.json())
+        .then(d => { setData(d); setLoading(false); });
+    
+    load();
+    const iv = setInterval(load, 5000);
+    return () => clearInterval(iv);
   }, []);
 
   if (loading) return (
@@ -148,9 +164,58 @@ export default function AnalyticsPage() {
             Full-funnel performance across all campaigns, channels, and audience segments
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(167,139,250,0.08)", border: "1px solid rgba(167,139,250,0.18)", borderRadius: 10, padding: "8px 14px" }}>
-          <Brain size={13} color="#a78bfa" />
-          <span style={{ fontSize: 11, color: "#c4b5fd", fontWeight: 600 }}>ARIA-analyzed</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Export CSV button */}
+          <button
+            onClick={() => {
+              const rows = [
+                ["Channel", "Campaigns", "Sent", "Delivered", "Opened", "Converted", "Delivery %", "Open %", "Conversion %"],
+                ...channelBreakdown.map(ch => {
+                  const del = ch.sent > 0 ? ((ch.delivered / ch.sent) * 100).toFixed(1) : "0";
+                  const op  = ch.delivered > 0 ? ((ch.opened / ch.delivered) * 100).toFixed(1) : "0";
+                  const conv = ch.sent > 0 ? ((ch.converted / ch.sent) * 100).toFixed(1) : "0";
+                  return [ch.channel, ch.count, ch.sent, ch.delivered, ch.opened, ch.converted, del, op, conv];
+                })
+              ];
+              const csv = rows.map(r => r.join(",")).join("\n");
+              const blob = new Blob([csv], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = "lumora_analytics.csv"; a.click();
+              URL.revokeObjectURL(url);
+              toast.success("Analytics exported as CSV!");
+            }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.22)",
+              color: "#34d399", fontSize: 11, fontWeight: 700,
+              padding: "7px 14px", borderRadius: 10, cursor: "pointer", transition: "all 0.15s",
+            }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(52,211,153,0.14)"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "rgba(52,211,153,0.08)"}
+          >
+            <Download size={13} /> Export CSV
+          </button>
+
+          {/* Live badge */}
+
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            background: "rgba(52,211,153,0.08)",
+            border: "1px solid rgba(52,211,153,0.2)",
+            borderRadius: 20,
+            padding: "6px 14px",
+          }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", animation: "livePulse 2s ease-in-out infinite" }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#34d399" }}>Live · updates every 5s</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(167,139,250,0.08)", border: "1px solid rgba(167,139,250,0.18)", borderRadius: 10, padding: "8px 14px" }}>
+            <Brain size={13} color="#a78bfa" />
+            <span style={{ fontSize: 11, color: "#c4b5fd", fontWeight: 600 }}>ARIA-analyzed</span>
+          </div>
         </div>
       </div>
 
@@ -160,7 +225,7 @@ export default function AnalyticsPage() {
         <StatCard label="Campaigns" value={data.totalCampaigns.toLocaleString()} icon={Megaphone} color="#38bdf8" sub="All time" />
         <StatCard label="Avg Open Rate" value={`${data.avgOpenRate}%`} icon={TrendingUp} color="#34d399" sub="Across all channels" />
         <StatCard label="Conversions" value={data.totalConverted.toLocaleString()} icon={ShoppingBag} color="#fb923c" sub={`${convRate.toFixed(1)}% of sent`} />
-        <StatCard label="Total Revenue" value={data.totalRevenue > 0 ? `₹${Math.round(data.totalRevenue / 1000)}K` : `₹${data.totalCustomers * 2.8 | 0}K`} icon={CircleDollarSign} color="#fbbf24" sub="Estimated lifetime" />
+        <StatCard label="Total Revenue" value={data.totalRevenue > 0 ? `${formatINR(Math.round(data.totalRevenue / 1000))}K` : `${formatINR(data.totalCustomers * 2.8 | 0)}K`} icon={CircleDollarSign} color="#fbbf24" sub="Estimated lifetime" />
       </div>
 
       {/* Rate funnel strip */}
@@ -267,13 +332,14 @@ export default function AnalyticsPage() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
           {/* Table header */}
-          <div style={{ display: "grid", gridTemplateColumns: "120px 80px 1fr 1fr 1fr 80px", gap: 12, padding: "0 0 10px", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: 1.2 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 80px 1fr 1fr 1fr 80px 60px", gap: 12, padding: "0 0 10px", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: 1.2 }}>
             <span>Channel</span>
             <span>Campaigns</span>
             <span>Delivery</span>
             <span>Open rate</span>
             <span>Conversion</span>
             <span style={{ textAlign: "right" }}>Messages</span>
+            <span style={{ textAlign: "center" }}>Grade</span>
           </div>
           {channelBreakdown.map((ch, i) => {
             const color = CH_COLOR[ch.channel] || "#a78bfa";
@@ -281,8 +347,12 @@ export default function AnalyticsPage() {
             const cDelivery = ch.sent > 0 ? (ch.delivered / ch.sent) * 100 : 0;
             const cOpen     = ch.delivered > 0 ? (ch.opened / ch.delivered) * 100 : 0;
             const cConv     = ch.sent > 0 ? (ch.converted / ch.sent) * 100 : 0;
+            // Performance grade: weighted score from all three rates
+            const score = (cDelivery * 0.3) + (cOpen * 0.4) + (cConv * 10 * 0.3);
+            const grade = score >= 65 ? "A+" : score >= 52 ? "A" : score >= 40 ? "B+" : score >= 30 ? "B" : "C";
+            const gradeColor = grade === "A+" ? "#34d399" : grade === "A" ? "#38bdf8" : grade === "B+" ? "#a78bfa" : grade === "B" ? "#f59e0b" : "#f87171";
             return (
-              <div key={ch.channel} style={{ display: "grid", gridTemplateColumns: "120px 80px 1fr 1fr 1fr 80px", gap: 12, alignItems: "center", padding: "14px 0", borderBottom: i < channelBreakdown.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+              <div key={ch.channel} style={{ display: "grid", gridTemplateColumns: "120px 80px 1fr 1fr 1fr 80px 60px", gap: 12, alignItems: "center", padding: "14px 0", borderBottom: i < channelBreakdown.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ width: 30, height: 30, borderRadius: 9, background: `${color}14`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <Icon size={13} color={color} />
@@ -315,6 +385,18 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
                 <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", textAlign: "right" }}>{ch.sent.toLocaleString()}</span>
+                {/* Performance grade badge */}
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 900,
+                    background: `${gradeColor}16`,
+                    border: `1px solid ${gradeColor}40`,
+                    color: gradeColor,
+                    borderRadius: 6,
+                    padding: "3px 8px",
+                    letterSpacing: 0.5,
+                  }}>{grade}</span>
+                </div>
               </div>
             );
           })}
@@ -389,7 +471,14 @@ export default function AnalyticsPage() {
         </motion.div>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes livePulse {
+          0% { opacity: 0.35; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1.05); }
+          100% { opacity: 0.35; transform: scale(0.95); }
+        }
+      `}</style>
     </div>
   );
 }

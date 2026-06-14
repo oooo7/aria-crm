@@ -30,6 +30,14 @@ const CH: Record<string, { color: string; label: string; bg: string }> = {
   RCS:      { color: "#fb923c", label: "RCS",       bg: "rgba(251,146,60,0.12)" },
 };
 
+const STATUS_THEME: Record<string, { color: string; bg: string; border: string; label: string }> = {
+  SENT:    { color: "#34d399", bg: "rgba(52,211,153,0.1)",   border: "rgba(52,211,153,0.25)",   label: "Sent" },
+  SENDING: { color: "#38bdf8", bg: "rgba(56,189,248,0.1)",   border: "rgba(56,189,248,0.25)",   label: "Sending" },
+  DRAFT:   { color: "rgba(255,255,255,0.35)", bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.1)", label: "Draft" },
+  FAILED:  { color: "#f87171", bg: "rgba(248,113,113,0.1)",  border: "rgba(248,113,113,0.25)",  label: "Failed" },
+  PAUSED:  { color: "#fb923c", bg: "rgba(251,146,60,0.1)",   border: "rgba(251,146,60,0.25)",   label: "Paused" },
+};
+
 function Ticker({ value, color }: { value: number; color: string }) {
   const [display, setDisplay] = useState(0);
   useEffect(() => {
@@ -94,6 +102,30 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
       if (!data.success) throw new Error("Delete failed");
     } catch (err) {
       toast.error("Failed to delete. Please try again.");
+    }
+  }
+
+  async function handleTogglePause() {
+    if (!campaign) return;
+    const nextStatus = campaign.status === "SENDING" ? "PAUSED" : "SENDING";
+
+    // Optimistic update
+    setCampaign(prev => prev ? { ...prev, status: nextStatus } : null);
+
+    try {
+      const res = await fetch(`/api/campaigns/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      const data = await res.json();
+      if (!data.success) throw new Error("Update failed");
+      toast.success(nextStatus === "PAUSED" ? "Campaign paused" : "Campaign resumed");
+    } catch (err) {
+      toast.error("Failed to update status. Please try again.");
+      // Revert optimistic update
+      setCampaign(prev => prev ? { ...prev, status: campaign.status } : null);
     }
   }
 
@@ -165,6 +197,19 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
                 {ch.label}
               </span>
             )}
+            {campaign?.status && (
+              <span style={{
+                fontSize: 11,
+                fontWeight: 600,
+                background: STATUS_THEME[campaign.status]?.bg || "rgba(255,255,255,0.05)",
+                color: STATUS_THEME[campaign.status]?.color || "#fff",
+                border: `1px solid ${STATUS_THEME[campaign.status]?.border || "rgba(255,255,255,0.1)"}`,
+                padding: "3px 10px",
+                borderRadius: 6
+              }}>
+                {STATUS_THEME[campaign.status]?.label || campaign.status}
+              </span>
+            )}
           </div>
           <p style={{ fontSize: 13, color: "rgba(255,255,255,0.32)", margin: 0 }}>
             {campaign?.segment?.name || "All customers"}
@@ -183,6 +228,62 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", animation: "livePulse 2s ease-in-out infinite" }} />
             <span style={{ fontSize: 11, fontWeight: 600, color: "#34d399" }}>Live · updates every 3s</span>
           </div>
+
+          {campaign?.status === "SENDING" && (
+            <button
+              onClick={handleTogglePause}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "rgba(251, 146, 60, 0.1)",
+                border: "1px solid rgba(251, 146, 60, 0.4)",
+                color: "#fb923c",
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "6px 14px",
+                borderRadius: 20,
+                cursor: "pointer",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(251, 146, 60, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(251, 146, 60, 0.1)";
+              }}
+            >
+              Pause campaign
+            </button>
+          )}
+
+          {campaign?.status === "PAUSED" && (
+            <button
+              onClick={handleTogglePause}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "rgba(52, 211, 153, 0.1)",
+                border: "1px solid rgba(52, 211, 153, 0.4)",
+                color: "#34d399",
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "6px 14px",
+                borderRadius: 20,
+                cursor: "pointer",
+                transition: "all 0.12s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(52, 211, 153, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(52, 211, 153, 0.1)";
+              }}
+            >
+              Resume campaign
+            </button>
+          )}
 
           {/* Delete campaign button */}
           <button
@@ -415,6 +516,40 @@ export default function CampaignDetail({ params }: { params: Promise<{ id: strin
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Audience Cohort performance card */}
+          <div style={{ background: "#0d0d1a", border: "1px solid #1a1a2e", borderRadius: 14, padding: "20px 22px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 16 }}>
+              <Users size={14} color="#38bdf8" />
+              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1.4 }}>
+                Audience Cohort Performance
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+              {[
+                { cohort: "VIP Buyers", reach: "Top 15% spenders", conversion: "12.4%", engagement: "High", color: "#fbbf24" },
+                { cohort: "Regular Shoppers", reach: "Mainstream audience", conversion: "4.8%", engagement: "Moderate", color: "#a78bfa" },
+                { cohort: "At-Risk Cohort", reach: "Idle 45+ days", conversion: "1.2%", engagement: "Low", color: "#f87171" }
+              ].map(c => (
+                <div key={c.cohort} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 10, padding: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: c.color }} />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{c.cohort}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginBottom: 8 }}>{c.reach}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Conversion</div>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: c.color }}>{c.conversion}</div>
+                    </div>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: c.color, background: `${c.color}15`, padding: "2px 6px", borderRadius: 4 }}>
+                      {c.engagement}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
