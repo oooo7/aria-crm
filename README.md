@@ -344,4 +344,4 @@ Key pages:
 
 ---
 
-*Built with ❤️ + Gemini AI for the Xeno Software Engineering Internship*
+*Built with ❤️ 
