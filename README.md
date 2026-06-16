@@ -1,6 +1,6 @@
 # ARIA CRM — AI-Native Customer Intelligence Platform
 
-> **Take-home assignment for Xeno Software Engineering Internship**  
+> **Assignment for Xeno Software Engineering Internship**  
 > Built for **Lumora Fashion**, a fictional D2C retail brand, to demonstrate real-world CRM product thinking.
 
 ---
